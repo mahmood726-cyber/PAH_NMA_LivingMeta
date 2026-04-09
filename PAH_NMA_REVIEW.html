@@ -2951,7 +2951,12 @@
                 const snapshots = this.state.versionSnapshots ?? [];
                 if (snapshots.length === 0) { showToast('No version snapshots to export.'); return; }
                 const header = 'version,date,trigger,n_trials,new_trials,removed_trials,pooled_effect,ci_lower,ci_upper,i2,tau2,grade,ris,effect_measure,conf_level';
-                const csvSafe = v => { const s = String(v ?? ''); return /^[=+@\t\r]/.test(s) ? "'" + s : s; };
+                const csvSafe = v => {
+                    let s = String(v ?? '');
+                    if (/^[=+@\t\r]/.test(s)) s = "'" + s;
+                    if (/[,"\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+                    return s;
+                };
                 const rows = snapshots.map(s => [
                     s.version, s.date, csvSafe(s.trigger ?? ''),
                     s.trialCount, csvSafe((s.newTrials ?? []).join(';')), csvSafe((s.removedTrials ?? []).join(';')),
@@ -8458,7 +8463,9 @@
                     return { logEffect: logHR, se, measure: 'HR', n: d.tN + d.cN };
                 }
                 if (d.tE > 0 || d.cE > 0) {
-                    const tE = d.tE + 0.5, tN = d.tN + 1, cE = d.cE + 0.5, cN = d.cN + 1;
+                    const hasZero = (d.tE === 0 || d.cE === 0 || d.tN - d.tE === 0 || d.cN - d.cE === 0);
+                    const tE = hasZero ? d.tE + 0.5 : d.tE, tN = hasZero ? d.tN + 1 : d.tN;
+                    const cE = hasZero ? d.cE + 0.5 : d.cE, cN = hasZero ? d.cN + 1 : d.cN;
                     const logRR = Math.log((tE / tN) / (cE / cN));
                     const se = Math.sqrt(1/tE - 1/tN + 1/cE - 1/cN);
                     return { logEffect: logRR, se, measure: 'RR', n: d.tN + d.cN };
@@ -9712,7 +9719,9 @@
                             const se = (Math.log(t.hrUCI) - Math.log(t.hrLCI)) / 3.92;
                             return { yi: logHR, vi: se * se };
                         }
-                        const tE = t.tE + 0.5, tN = t.tN + 1, cE = t.cE + 0.5, cN = t.cN + 1;
+                        const hasZero = (t.tE === 0 || t.cE === 0 || t.tN - t.tE === 0 || t.cN - t.cE === 0);
+                        const tE = hasZero ? t.tE + 0.5 : t.tE, tN = hasZero ? t.tN + 1 : t.tN;
+                        const cE = hasZero ? t.cE + 0.5 : t.cE, cN = hasZero ? t.cN + 1 : t.cN;
                         const logRR = Math.log((tE/tN) / (cE/cN));
                         const vi = 1/tE - 1/tN + 1/cE - 1/cN;
                         return { yi: logRR, vi };
@@ -9731,8 +9740,11 @@
                     const seRE = Math.sqrt(1/wSumRE);
 
                     const est = Math.exp(yRE);
-                    const lo = Math.exp(yRE - 1.96*seRE);
-                    const hi = Math.exp(yRE + 1.96*seRE);
+                    // t-distribution quantile for df=k-1 (Abramowitz & Stegun approx for 97.5th percentile)
+                    const df = Math.max(1, effects.length - 1);
+                    const tCrit = df >= 30 ? 1.96 : (df === 1 ? 12.706 : df === 2 ? 4.303 : df === 3 ? 3.182 : df === 4 ? 2.776 : df === 5 ? 2.571 : df <= 10 ? 2.228 : df <= 20 ? 2.086 : 2.042);
+                    const lo = Math.exp(yRE - tCrit*seRE);
+                    const hi = Math.exp(yRE + tCrit*seRE);
                     const lastTrial = subset[subset.length - 1];
                     points.push({ k, year: lastTrial.year, name: lastTrial.name, est, lo, hi, n: subset.reduce((s,t) => s + t.tN + t.cN, 0) });
                 }
@@ -9795,15 +9807,18 @@
                 const ciLo = r.ci?.[0] ?? r.lci;
                 const ciHi = r.ci?.[1] ?? r.uci;
                 const i2 = r.i2 ?? r.heterogeneity?.i2;
-                const pQ = r.pQ ?? r.heterogeneity?.pQ;
+                const pQ = r?.qPvalue ?? r?.pQ ?? r?.heterogeneity?.pQ;
 
                 const results = `<h4 style="font-family:Georgia,serif;font-size:1.1rem;font-weight:700;margin:1.5rem 0 0.75rem;color:#f1f5f9">Results</h4>
-                <p style="font-family:Georgia,serif;font-size:0.95rem;line-height:1.8;color:#cbd5e1">${poolable.length} randomized controlled trials (${trialList}) enrolling ${totalN.toLocaleString()} participants met inclusion criteria. The pooled ${escapeHtml(emS)} was <strong style="color:#60a5fa;font-family:'JetBrains Mono',monospace">${orVal != null ? Number(orVal).toFixed(2) : '--'}</strong> (95% CI ${ciLo != null ? Number(ciLo).toFixed(2) : '--'} to ${ciHi != null ? Number(ciHi).toFixed(2) : '--'}${i2 != null ? '; I\u00b2 = ' + Number(i2).toFixed(0) + '%' : ''}${pQ != null ? '; Q p = ' + Number(pQ).toFixed(3) : ''}). ${i2 != null && Number(i2) < 25 ? 'Heterogeneity was low.' : i2 != null && Number(i2) < 50 ? 'Heterogeneity was moderate.' : i2 != null ? 'Substantial heterogeneity was observed.' : ''}</p>`;
+                <p style="font-family:Georgia,serif;font-size:0.95rem;line-height:1.8;color:#cbd5e1">${poolable.length} randomized controlled trials (${escapeHtml(trialList)}) enrolling ${totalN.toLocaleString()} participants met inclusion criteria. The pooled ${escapeHtml(emS)} was <strong style="color:#60a5fa;font-family:'JetBrains Mono',monospace">${orVal != null ? Number(orVal).toFixed(2) : '--'}</strong> (95% CI ${ciLo != null ? Number(ciLo).toFixed(2) : '--'} to ${ciHi != null ? Number(ciHi).toFixed(2) : '--'}${i2 != null ? '; I\u00b2 = ' + Number(i2).toFixed(0) + '%' : ''}${pQ != null ? '; Q p = ' + Number(pQ).toFixed(3) : ''}). ${i2 != null && Number(i2) < 25 ? 'Heterogeneity was low.' : i2 != null && Number(i2) < 50 ? 'Heterogeneity was moderate.' : i2 != null ? 'Substantial heterogeneity was observed.' : ''}</p>`;
 
                 const transparency = `<h4 style="font-family:Georgia,serif;font-size:1.1rem;font-weight:700;margin:1.5rem 0 0.75rem;color:#f1f5f9">Transparency Statement</h4>
                 <p style="font-family:Georgia,serif;font-size:0.95rem;line-height:1.8;color:#cbd5e1">This living meta-analysis uses a v15 transparency engine where every extracted number links to its original source via deep-link provenance. A cross-validation panel verifies each data point against ClinicalTrials.gov results, PubMed abstracts, and the extracted value. The living update diff tracks how the pooled estimate changes as new trials publish. The complete analysis is available as a single-file HTML application at the associated GitHub Pages URL.</p>`;
 
-                container.innerHTML = methods + results + transparency;
+                const limitations = `<h4 style="font-family:Georgia,serif;font-size:1.1rem;font-weight:700;margin:1.5rem 0 0.75rem;color:#f1f5f9">Limitations</h4>
+<p style="font-family:Georgia,serif;font-size:0.95rem;line-height:1.8;color:#cbd5e1">This review has not been prospectively registered on PROSPERO. Risk of bias was assessed using the Cochrane RoB 2 tool across five domains; a summary is available in the Extraction tab. GRADE certainty of evidence assessment is provided in the GRADE Evidence Profile section. Sensitivity analyses including leave-one-out and cumulative meta-analysis are available in the Analysis and Report tabs. No external funding was received. The authors declare no conflicts of interest.</p>`;
+
+                container.innerHTML = methods + results + transparency + limitations;
             },
 
             copyToClipboard() {
@@ -13485,16 +13500,28 @@ except ImportError:
             _chain: [],
 
             async _sha256(text) {
-                const data = new TextEncoder().encode(text);
-                const hash = await crypto.subtle.digest('SHA-256', data);
-                return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+                try {
+                    if (window.crypto?.subtle) {
+                        const data = new TextEncoder().encode(text);
+                        const hash = await crypto.subtle.digest('SHA-256', data);
+                        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+                    }
+                } catch(e) {}
+                // djb2 fallback for file:// protocol
+                let h = 5381;
+                for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) >>> 0;
+                return h.toString(16).padStart(8, '0').repeat(8);
             },
 
             async seal(action, data) {
+                const ts = new Date().toISOString();
+                if (this._chain.length === 0 && RapidMeta.state._provenanceChain?.length > 0) {
+                    this._chain = [...RapidMeta.state._provenanceChain];
+                }
                 const prev = this._chain.length > 0 ? this._chain[this._chain.length - 1].hash : '0'.repeat(64);
-                const payload = JSON.stringify({ action, data, prev, ts: new Date().toISOString() });
+                const payload = JSON.stringify({ action, data, prev, ts });
                 const hash = await this._sha256(payload);
-                const entry = { seq: this._chain.length + 1, action, hash, prev, ts: new Date().toISOString(), dataFingerprint: await this._sha256(JSON.stringify(data)) };
+                const entry = { seq: this._chain.length + 1, action, hash, prev, ts, dataFingerprint: await this._sha256(JSON.stringify(data)) };
                 this._chain.push(entry);
                 if (!RapidMeta.state._provenanceChain) RapidMeta.state._provenanceChain = [];
                 RapidMeta.state._provenanceChain.push(entry);
@@ -13505,6 +13532,7 @@ except ImportError:
             verify() {
                 const chain = RapidMeta.state._provenanceChain ?? [];
                 if (chain.length === 0) return { valid: true, length: 0, msg: 'Empty chain' };
+                if (chain[0].prev !== '0'.repeat(64)) return { valid: false, length: chain.length, broken: 0, msg: 'Genesis entry prev hash invalid' };
                 for (let i = 1; i < chain.length; i++) {
                     if (chain[i].prev !== chain[i-1].hash) {
                         return { valid: false, length: chain.length, broken: i, msg: `Chain broken at entry ${i}: prev hash mismatch` };
@@ -13613,10 +13641,18 @@ except ImportError:
                     if (Math.abs(d.tN - d.cN) > d.tN * 0.5) results.push({ id: 'QA14', level: 'INFO', msg: `${d.name ?? t.id}: Unbalanced arms (${d.tN} vs ${d.cN}) — check if by design` });
                 });
 
-                // 15. Cross-validation status
+                // QA15: Cross-validation status (check via concordance logic, not rendered HTML)
                 const xvalIssues = poolable.filter(t => {
-                    const badge = CrossValidationEngine.renderSummaryBadge(t.id);
-                    return badge.includes('Discrepant');
+                    const fields = ['tE', 'tN', 'cE', 'cN', 'effect', 'lci', 'uci'];
+                    const ctgov = CrossValidationEngine._extractCtgovValues(t.id);
+                    const pubmed = CrossValidationEngine._extractPubmedValues(t.id);
+                    const extracted = CrossValidationEngine._getExtractedValues(t.id);
+                    for (const f of fields) {
+                        const vals = [{source:'ctgov',value:ctgov[f]},{source:'pubmed',value:pubmed[f]},{source:'extracted',value:extracted[f]}];
+                        const result = CrossValidationEngine.checkConcordance(f, vals);
+                        if (result.status === 'discrepant') return true;
+                    }
+                    return false;
                 });
                 if (xvalIssues.length > 0) results.push({ id: 'QA15', level: 'WARN', msg: `${xvalIssues.length} trial(s) have cross-validation discrepancies` });
 
@@ -13647,7 +13683,7 @@ except ImportError:
                 const icons = { CRITICAL: 'fa-circle-xmark text-red-400', WARN: 'fa-triangle-exclamation text-amber-400', INFO: 'fa-circle-info text-blue-400', PASS: 'fa-circle-check text-emerald-400' };
                 container.innerHTML = results.map(r => {
                     const icon = icons[r.level] ?? icons.INFO;
-                    return `<div class="flex items-start gap-2 py-1.5 text-[11px]"><i class="fa-solid ${icon} mt-0.5"></i><span class="text-slate-300"><span class="font-mono text-slate-500">[${escapeHtml(r.id)}]</span> ${escapeHtml(r.msg)}</span></div>`;
+                    return `<div class="flex items-start gap-2 py-1.5 text-[11px]"><i class="fa-solid ${icon} mt-0.5" aria-hidden="true"></i><span class="sr-only">${escapeHtml(r.level)}</span><span class="text-slate-300"><span class="font-mono text-slate-500">[${escapeHtml(r.id)}]</span> ${escapeHtml(r.msg)}</span></div>`;
                 }).join('');
             }
         };
