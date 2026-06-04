@@ -1,0 +1,8 @@
+{
+  "drug": "PAH NMA",
+  "drug_lower": "pah nma",
+  "condition": "Adults with symptomatic PAH WHO FC II-IV",
+  "slug": "pah_nma",
+  "source_repo": "C:\\Projects\\PAH_NMA_LivingMeta",
+  "source_html": "PAH_NMA_REVIEW.html"
+}
