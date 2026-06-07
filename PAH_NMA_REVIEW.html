@@ -32,6 +32,7 @@
 
 
     <link rel="stylesheet" href="assets/styles.tailwind.css">
+    <link rel="stylesheet" href="assets/css/paper-studio.css">
 
 
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous">
@@ -1380,6 +1381,8 @@
 
 
         <button onclick="RapidMeta.switchTab('report')" class="tab-btn h-full text-sm font-medium text-purple-400 hover:text-purple-300 transition-all duration-200 border-b-2 border-transparent" data-tab="report" role="tab" aria-selected="false" aria-controls="tab-report" id="btn-tab-report">6. Scientific Output</button>
+
+        <button onclick="RapidMeta.switchTab('paper')" class="tab-btn h-full text-sm font-medium text-amber-400 hover:text-amber-300 transition-all duration-200 border-b-2 border-transparent" data-tab="paper" role="tab" aria-selected="false" aria-controls="tab-paper" id="btn-tab-paper">7. Paper Studio</button>
 
 
     </nav>
@@ -4468,6 +4471,74 @@
 
         </section>
 
+
+    
+
+<!-- ============ 7. PAPER STUDIO (pilot) ============ -->
+        <section id="tab-paper" class="tab-content h-full overflow-y-auto hidden paper-studio-page" role="tabpanel" aria-labelledby="btn-tab-paper">
+
+            <div class="paper-toolbar no-print">
+                <span class="ps-title">Evidence Paper Studio</span>
+                <button id="btnWriteMode" title="Editing view: shows prompts, tips and tools.">Write</button>
+                <button id="btnCheckPaper" title="Check what is still missing before you export.">Check paper</button>
+                <button id="btnDownloadCleanPdf" class="primary" title="Your finished paper — THIS is the file you hand in. It opens your device’s “Save as PDF” (a couple of taps/clicks). Unlocks when every section is written.">⬇ Download my paper (PDF)</button>
+                <details class="toolbar-more"><summary title="Other tools and formats">More ▾</summary>
+                  <div class="toolbar-more-body">
+                    <button id="btnPreviewMode" title="See the paper as it will print, with prompts and tips hidden.">Preview finished paper</button>
+                    <button id="btnDownloadWorkingPdf" title="PDF that KEEPS the prompts and tips — good for a tutor to mark.">Version with tips (for my tutor)</button>
+                    <button id="btnRefreshFigures" title="Pull the latest plots and tables from your analysis into the paper.">Refresh figures</button>
+                    <button id="btnToggleTips" title="Show or hide the extra notes and examples. The short how-to under each box always stays.">Hide examples &amp; notes</button>
+                    <button id="btnStartGuide" title="Reopen the “New to writing a paper? Start here” guide.">Start-here guide</button>
+                    <button id="btnDownloadJson" title="Save your paper as a JSON file">Save data</button>
+                    <button id="btnUploadJson" title="Load a previously saved paper">Load data</button>
+                    <button id="btnResetPaper" class="danger" title="Clear your written text (keeps evidence)">Reset text</button>
+                    <button id="btnClearAll" class="danger" title="Remove ALL your writing from this computer — use before leaving a shared/public machine.">Clear all (shared PC)</button>
+                  </div>
+                </details>
+                <details class="download-menu"><summary title="Advanced formats: Word, text, figures, supplementary, transparency">Advanced formats ▾</summary>
+                    <div class="download-menu-body">
+                        <strong>One combined file (PDF is the blue button above)</strong>
+                        <button type="button" data-export="word">Word (.doc)</button>
+                        <button type="button" data-export="html">HTML (.html)</button>
+                        <button type="button" data-export="md">Markdown (.md)</button>
+                        <button type="button" data-export="txt">Plain text (.txt)</button>
+                        <hr>
+                        <strong>Text separate from figures</strong>
+                        <label class="fig-fmt">Figure format
+                            <select id="figFormatSelect"><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="svg">SVG</option><option value="tiff">TIFF</option></select>
+                        </label>
+                        <button type="button" data-export="bundle">Manuscript + figures (.zip)</button>
+                        <button type="button" data-export="figures">Figures only (.zip)</button>
+                        <hr>
+                        <strong>Supplementary (submittable)</strong>
+                        <button type="button" data-export="prisma">PRISMA 2020 checklist</button>
+                        <button type="button" data-export="amstar">AMSTAR-2 appraisal</button>
+                        <button type="button" data-export="search">Search strategy</button>
+                        <hr>
+                        <strong>Full transparency</strong>
+                        <button type="button" data-export="transparency" title="Everything RapidMeta produced: all charts, full results, R code, every record with abstract + link.">Transparency appendix (.zip)</button>
+                    </div>
+                </details>
+                <span id="paperSaveStatus" class="ps-save-status">Saved</span>
+                <input id="paperJsonInput" type="file" accept="application/json" hidden>
+            </div>
+
+            <div class="paper-studio-layout">
+                <aside class="paper-sidebar no-print">
+                    <section class="paper-mission-panel">
+                        <h4>Your job</h4>
+                        <p class="paper-mission"><strong>RapidMeta calculates the evidence.</strong> Your job is to explain what it means, what it does not mean, and why it matters. A clean PDF unlocks once the required interpretation fields are complete.</p>
+                    </section>
+                    <section id="evidenceChipsPanel"></section>
+                    <section id="paperChecklistPanel"></section>
+                </aside>
+
+                <article id="paperCanvas" class="paper-canvas paper-mode-write">
+                    <p style="color:#667085">Loading your evidence paper…</p>
+                </article>
+            </div>
+
+        </section>
 
     </main>
 
@@ -8290,7 +8361,7 @@ const ContinuousMDEngine = {
                     tablist.dataset.arrowBound = '1';
 
 
-                    const tabOrder = ['protocol', 'search', 'screen', 'extract', 'analysis', 'report'];
+                    const tabOrder = ['protocol', 'search', 'screen', 'extract', 'analysis', 'report', 'paper'];
 
 
                     tablist.addEventListener('keydown', (e) => {
@@ -44107,6 +44178,24 @@ except ImportError:
     else setTimeout(function () { repair(0); }, 1000);
   })();
   </script>
+<!-- ============ Paper Studio: learning drawer + toast ============ -->
+<div id="learningDrawer" class="learning-drawer no-print" hidden role="dialog" aria-modal="true" aria-labelledby="learningTitle">
+  <button id="closeLearningDrawer" aria-label="Close learning panel">Close ✕</button>
+  <h2 id="learningTitle"></h2>
+  <p id="learningShort"></p>
+  <div class="learning-common-mistake"><strong>Common mistake:</strong> <span id="learningMistake"></span></div>
+  <a id="learningCourseLink" target="_blank" rel="noopener">Open full Synthesis lesson</a>
+</div>
+<div id="paperToast" class="paper-toast no-print" role="status" aria-live="polite"></div>
+
+<script src="assets/js/paper-learning-links.js" defer></script>
+<script src="assets/js/paper-readiness-checks.js" defer></script>
+<script src="assets/js/paper-figures.js" defer></script>
+<script src="assets/js/paper-formats.js" defer></script>
+<script src="assets/js/paper-supplementary.js" defer></script>
+<script src="assets/js/paper-export.js" defer></script>
+<script src="assets/js/paper-studio.js" defer></script>
+
 </body>
 
 
