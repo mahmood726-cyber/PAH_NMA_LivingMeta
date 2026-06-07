@@ -44049,6 +44049,64 @@ except ImportError:
   <script src="assets/vendor/meta-regression-permutation.js" defer></script>
   <script src="assets/vendor/grim-benford.js" defer></script>
   <script src="assets/vendor/r-validation-continuous.js" defer></script>
+
+  <script>
+  /* COMPLETE-POOLING-REPAIR (2026-06): ensure every INCLUDED study is actually pooled, using
+     the most robust method the data supports — never inventing data.
+       1) Extraction repair: copy event counts the extraction left at 0 from the review's OWN
+          realData into trial.data.
+       2) If studies are still dropped and every included study reports a published hazard
+          ratio, pool by HR (the correct, most powerful method for time-to-event outcomes) so
+          all such trials are included.
+       3) If any study still cannot be pooled, log a clear warning naming it.
+     Idempotent and self-adapting: a no-op when k already equals the included count. */
+  (function () {
+    var done = false;
+    function inclTrials(R) {
+      return (R.state.trials || []).filter(function (t) {
+        var s = String(t.status || "").toLowerCase(), d = t.data || {};
+        return s === "include" && (Number(d.tN) > 0 || Number(d.cN) > 0 || Number(d.n) > 0);
+      });
+    }
+    function kOf(R) { return R.state.results ? Number(R.state.results.k) : null; }
+    function rerun(R) { try { if (window.AnalysisEngine && AnalysisEngine.run) AnalysisEngine.run(); } catch (e) {} }
+    function repair(tries) {
+      tries = tries || 0;
+      var R = window.RapidMeta;
+      if (!R || !R.state || !R.state.trials) { if (tries < 30) return setTimeout(function () { repair(tries + 1); }, 400); return; }
+      if (done) return;
+      // Wait until the analysis has computed results at least once (k is set); nudge it.
+      if (kOf(R) == null) { rerun(R); if (tries < 30) return setTimeout(function () { repair(tries + 1); }, 400); }
+      var inc = inclTrials(R), fixed = 0;
+      inc.forEach(function (t) {
+        var rd = R.realData && R.realData[t.id];
+        if (rd && (Number(t.data.tE) || 0) === 0 && (Number(t.data.cE) || 0) === 0 && (Number(rd.tE) || 0) > 0) {
+          t.data.tE = rd.tE; t.data.cE = rd.cE;
+          if (!(Number(t.data.tN) > 0) && rd.tN) t.data.tN = rd.tN;
+          if (!(Number(t.data.cN) > 0) && rd.cN) t.data.cN = rd.cN;
+          fixed++;
+        }
+      });
+      if (fixed) { rerun(R); inc = inclTrials(R); }
+      var k = kOf(R);
+      var allHR = inc.length > 0 && inc.every(function (t) { var d = t.data || {}; return Number(d.publishedHR || d.pubHR) > 0; });
+      if (k != null && inc.length > k && allHR && R.setEffectMeasure && R.state.effectMeasure !== "HR") {
+        try { R.setEffectMeasure("HR"); } catch (e) {} rerun(R); k = kOf(R);
+      }
+      done = true;
+      try { if (R.save) R.save(); } catch (e) {}
+      k = kOf(R); inc = inclTrials(R);
+      try {
+        if (k != null && inc.length > k) {
+          var names = inc.filter(function (t) { var d = t.data || {}; return (Number(d.tE) || 0) === 0 && (Number(d.cE) || 0) === 0 && !(Number(d.publishedHR || d.pubHR) > 0); }).map(function (t) { return (t.data && t.data.name) || t.id; });
+          console.warn("[pooling-repair] " + (inc.length - k) + " included study(ies) could not be pooled (no extractable effect): " + names.join(", "));
+        } else { console.log("[pooling-repair] all " + inc.length + " included studies pooled (k=" + k + ")"); }
+      } catch (e) {}
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { setTimeout(function () { repair(0); }, 1000); });
+    else setTimeout(function () { repair(0); }, 1000);
+  })();
+  </script>
 </body>
 
 
