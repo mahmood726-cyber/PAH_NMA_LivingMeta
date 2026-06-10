@@ -11077,7 +11077,7 @@ const ContinuousMDEngine = {
                 const current = this.state.selectedOutcome ?? 'default';
 
 
-                sel.innerHTML = [...allLabels].map(k => `<option value="${escapeHtml(k)}"${k === current ? ' selected' : ''}>${escapeHtml(this.outcomeLabel(k))}</option>`).join('');
+                sel.innerHTML=[...allLabels].map(k=>[k,this.outcomeLabel(k)]).filter((p,i,a)=>a.findIndex(q=>q[1]===p[1])===i).map(p=>`<option value="${escapeHtml(p[0])}"${p[0]===current?' selected':''}>${escapeHtml(p[1])}</option>`).join('');
 
 
             },
