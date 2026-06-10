@@ -31044,173 +31044,153 @@ const ContinuousMDEngine = {
 
 
 const TransportabilityEngine = {
+    // External-validity layer: (1) representativeness/positivity map (always
+    // valid, descriptive) + (2) a labelled effect-modifier SENSITIVITY transport
+    // (NOT a primary real-world effect; rigorous transport needs IPD). Framing:
+    // Westreich 2017 / Dahabreh 2020 — transport over pre-specified EFFECT
+    // MODIFIERS only; a valid gamma comes from a within/pure-strata contrast,
+    // never an across-trial regression (ecological fallacy).
+    state: { modifier: 'diabetes', gamma: null, gammaLo: null, gammaHi: null },
+    // Editable built-in reference targets (real cited prevalences of the modifier).
+    TARGETS: [
+        { name: 'US obese adults (NHANES 2017-2020)', p: 0.26 },
+        { name: 'England obese adults (HSE 2024)', p: 0.13 },
+        { name: 'Global adults (IDF 2021)', p: 0.105 },
+        { name: 'MENA/Gulf adults (IDF 2021)', p: 0.181 },
+        { name: 'Sub-Saharan Africa (IDF 2021)', p: 0.053 }
+    ],
+    targetPop: { age: 68.0, female: 45.0, dm: 40.0, ldl: 130.0 },  // legacy demographic target (kept for back-compat)
+    _num(x) { const v = parseFloat(x); return isFinite(v) ? v : null; },
+    _esc(s) { return (typeof escapeHtml === 'function' ? escapeHtml(String(s ?? '')) : String(s ?? '')); },
 
-
-    targetPop: { age: 68.0, female: 45.0, dm: 40.0, ldl: 130.0 },
-
-
+    // Sample-size-weighted trial covariate means + modifier prevalence. Tolerant
+    // of legacy {age,female,dm,ldl} and {age,pct_female,bmi,weight}; modifier
+    // prevalence from explicit modifierPrevalence, legacy dm (%), or a population tag.
     analyze(trials) {
-
-
-        const analyzed = trials.filter(t => t.data?.baseline);
-
-
+        const analyzed = (trials || []).filter(t => t.data && t.data.baseline);
         if (analyzed.length === 0) return null;
-
-
-        
-
-
         let sumN = 0;
-
-
-        const weighted = { age: 0, female: 0, dm: 0, ldl: 0 };
-
-
-        
-
-
+        const w = { age: 0, female: 0, bmi: 0, weight: 0, ldl: 0 };
+        const cnt = { age: 0, female: 0, bmi: 0, weight: 0, ldl: 0 };
+        let modPos = 0, modTot = 0;
         analyzed.forEach(t => {
-
-
-            const b = t.data.baseline;
-
-
-            const n = b.n || 100;
-
-
-            sumN += n;
-
-
-            weighted.age += b.age * n;
-
-
-            weighted.female += b.female * n;
-
-
-            weighted.dm += b.dm * n;
-
-
-            weighted.ldl += b.ldl * n;
-
-
+            const b = t.data.baseline; const n = this._num(b.n) || 100; sumN += n;
+            const fem = this._num(b.pct_female != null ? b.pct_female : b.female);
+            const vals = { age: this._num(b.age), female: fem, bmi: this._num(b.bmi), weight: this._num(b.weight), ldl: this._num(b.ldl) };
+            Object.keys(vals).forEach(k => { if (vals[k] !== null) { w[k] += vals[k] * n; cnt[k] += n; } });
+            let mp = this._num(t.data.modifierPrevalence);
+            if (mp === null && this._num(b.dm) !== null) mp = this._num(b.dm) / 100;
+            if (mp === null) { const pop = String(t.data.population ?? t.population ?? '').toLowerCase(); if (pop) mp = /t2d|diabet/.test(pop) ? 1 : 0; }
+            if (mp !== null) { modPos += mp; modTot += 1; }
         });
-
-
-        
-
-
-        const pooled = {
-
-
-            age: weighted.age / sumN,
-
-
-            female: weighted.female / sumN,
-
-
-            dm: weighted.dm / sumN,
-
-
-            ldl: weighted.ldl / sumN
-
-
-        };
-
-
-        
-
-
-        return { pooled, target: this.targetPop, trials: analyzed.length };
-
-
+        const m = k => cnt[k] ? w[k] / cnt[k] : null;
+        const pooled = { age: m('age'), female: m('female'), bmi: m('bmi'), weight: m('weight'),
+                         ldl: m('ldl'), dm: modTot ? 100 * modPos / modTot : null };
+        return { pooled, pModifier: modTot ? modPos / modTot : null, target: this.targetPop, trials: analyzed.length };
     },
 
+    _gamma() { const g = this.state.gamma; if (g === null || g === undefined) return { g: 0, lo: 0, hi: 0 };
+        return { g, lo: this.state.gammaLo ?? g, hi: this.state.gammaHi ?? g }; },
+
+    apply() {
+        const mod = document.getElementById('tp-modifier'); const g = document.getElementById('tp-gamma');
+        const lo = document.getElementById('tp-gamma-lo'); const hi = document.getElementById('tp-gamma-hi');
+        if (mod) this.state.modifier = (mod.value || 'modifier').trim();
+        this.state.gamma = g ? this._num(g.value) : null;
+        this.state.gammaLo = lo ? this._num(lo.value) : null;
+        this.state.gammaHi = hi ? this._num(hi.value) : null;
+        this.render(RapidMeta.state.trials);
+    },
 
     render(trials) {
-
-
-        const res = this.analyze(trials);
-
-
-        if (!res) return;
-
-
         const container = document.getElementById('transportability-container');
-
-
         if (!container) return;
+        const res = this.analyze(trials);
+        if (!res) { container.innerHTML = '<div class="text-xs text-slate-500">No trial baseline data available for a representativeness map.</div>'; return; }
+        const r = RapidMeta.state.results;
+        const e = r ? this._num(r.pOR ?? r.or) : null;
+        const cont = r ? !!r.isContinuous : true;
+        const gObj = this._gamma();
+        const modName = this._esc(this.state.modifier);
 
-
-        
-
-
-        let html = '<div class="grid grid-cols-4 gap-4 mt-4">';
-
-
+        // (1) representativeness cards (descriptive, always valid)
         const metrics = [
-
-
-            { k: 'age', l: 'Mean Age', u: 'yrs' },
-
-
-            { k: 'female', l: '% Female', u: '%' },
-
-
-            { k: 'dm', l: '% Diabetes', u: '%' },
-
-
-            { k: 'ldl', l: 'Baseline LDL', u: 'mg/dL' }
-
-
+            { k: 'age', l: 'Mean Age', u: 'yrs', t: res.target.age },
+            { k: 'female', l: '% Female', u: '%', t: res.target.female },
+            { k: 'dm', l: '% ' + modName, u: '%', t: res.target.dm },
+            { k: 'bmi', l: 'Mean BMI', u: '', t: null },
+            { k: 'weight', l: 'Baseline wt', u: 'kg', t: null },
+            { k: 'ldl', l: 'Baseline LDL', u: 'mg/dL', t: res.target.ldl }
         ];
-
-
-        
-
-
-        metrics.forEach(m => {
-
-
-            const p = res.pooled[m.k].toFixed(1);
-
-
-            const t = res.target[m.k].toFixed(1);
-
-
-            const diff = (res.pooled[m.k] - res.target[m.k]).toFixed(1);
-
-
-            const color = Math.abs(diff) > 5 ? 'text-amber-400' : 'text-emerald-400';
-
-
-            html += `<div class="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
-
-
-                <div class="text-[10px] uppercase text-slate-500 font-bold mb-1">${m.l}</div>
-
-
-                <div class="text-lg font-mono text-white">${p}<span class="text-xs text-slate-500 ml-1">${m.u}</span></div>
-
-
-                <div class="text-[9px] mt-1 ${color}">Target: ${t} (diff: ${diff})</div>
-
-
-            </div>`;
-
-
+        let cards = '<div class="grid grid-cols-3 md:grid-cols-6 gap-3 mt-2">';
+        metrics.forEach(mm => {
+            const pv = res.pooled[mm.k];
+            if (pv === null || pv === undefined) return;
+            const p = pv.toFixed(1);
+            let tline = '<span class="text-slate-600">no target set</span>';
+            if (mm.t !== null && mm.t !== undefined) {
+                const diff = (pv - mm.t).toFixed(1);
+                const color = Math.abs(diff) > 5 ? 'text-amber-400' : 'text-emerald-400';
+                tline = `<span class="${color}">Target ${mm.t.toFixed(1)} (${diff >= 0 ? '+' : ''}${diff})</span>`;
+            }
+            cards += `<div class="bg-slate-900/50 p-3 rounded-xl border border-slate-800">
+                <div class="text-[9px] uppercase text-slate-500 font-bold mb-1">${mm.l}</div>
+                <div class="text-base font-mono text-white">${p}<span class="text-[10px] text-slate-500 ml-1">${mm.u}</span></div>
+                <div class="text-[9px] mt-1">${tline}</div></div>`;
         });
+        cards += '</div>';
 
+        // gamma controls
+        const controls = `<div class="flex flex-wrap items-end gap-3 mt-5 p-4 rounded-2xl bg-slate-900/50 border border-slate-800">
+            <label class="text-[9px] uppercase tracking-widest opacity-70">Modifier
+                <input id="tp-modifier" value="${modName}" class="mt-1 block bg-slate-950 border border-slate-700 rounded-lg px-3 py-1 text-xs w-36"></label>
+            <label class="text-[9px] uppercase tracking-widest opacity-70">&gamma; / 100% modifier
+                <input id="tp-gamma" type="number" step="0.1" placeholder="e.g. 5.9" value="${this.state.gamma ?? ''}" class="mt-1 block bg-slate-950 border border-slate-700 rounded-lg px-3 py-1 text-xs w-24"></label>
+            <label class="text-[9px] uppercase tracking-widest opacity-70">&gamma; low
+                <input id="tp-gamma-lo" type="number" step="0.1" value="${this.state.gammaLo ?? ''}" class="mt-1 block bg-slate-950 border border-slate-700 rounded-lg px-3 py-1 text-xs w-20"></label>
+            <label class="text-[9px] uppercase tracking-widest opacity-70">&gamma; high
+                <input id="tp-gamma-hi" type="number" step="0.1" value="${this.state.gammaHi ?? ''}" class="mt-1 block bg-slate-950 border border-slate-700 rounded-lg px-3 py-1 text-xs w-20"></label>
+            <button onclick="TransportabilityEngine.apply()" class="bg-teal-600 hover:bg-teal-500 text-white px-5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest">Apply transport</button></div>`;
 
-        html += '</div>';
+        // (2) labelled modifier transport
+        let transport;
+        const pt = res.pModifier === null ? 0 : res.pModifier;
+        if (e === null) {
+            transport = '<div class="text-xs text-slate-500 mt-3">Run the analysis to get a pooled effect before transporting.</div>';
+        } else if (gObj.g === 0) {
+            transport = `<div class="text-[11px] text-amber-300/90 leading-relaxed mt-3">Enter a modifier-attenuation slope <b>&gamma;</b> above to compute a transported estimate to each target population. &gamma; must come from a <b>within-stratum / pure-strata contrast</b>, not an across-trial regression (ecological fallacy).</div>`;
+        } else {
+            const rows = this.TARGETS.map(tg => {
+                const sMid = -gObj.g * (tg.p - pt);
+                const sA = -gObj.hi * (tg.p - pt), sB = -gObj.lo * (tg.p - pt);
+                const mid = e + sMid, a = e + Math.min(sA, sB), b = e + Math.max(sA, sB);
+                return `<tr class="border-b border-slate-800/60">
+                    <td class="p-2 font-semibold">${this._esc(tg.name)}</td>
+                    <td class="p-2 font-mono opacity-70">${(tg.p * 100).toFixed(0)}%</td>
+                    <td class="p-2 font-mono text-teal-300">${mid.toFixed(2)}</td>
+                    <td class="p-2 font-mono opacity-70 text-[10px]">${a.toFixed(2)} to ${b.toFixed(2)}</td>
+                    <td class="p-2 font-mono ${sMid < 0 ? 'text-rose-300' : 'text-emerald-300'}">${sMid >= 0 ? '+' : ''}${sMid.toFixed(2)}</td></tr>`;
+            }).join('');
+            transport = `<table class="w-full text-left text-[11px] mt-3">
+                <thead class="bg-slate-950/60 text-[9px] uppercase font-bold tracking-widest opacity-60"><tr>
+                <th class="p-2">Target population</th><th class="p-2">${modName} %</th><th class="p-2">Transported</th><th class="p-2">&gamma;-band</th><th class="p-2">Shift</th></tr></thead>
+                <tbody>${rows}</tbody></table>
+                <div class="mt-2 text-[9px] opacity-60">Source (trial) ${modName} prevalence: <b>${res.pModifier === null ? 'unknown (assumed 0%)' : (res.pModifier * 100).toFixed(0) + '%'}</b>; transported = pooled &minus; &gamma;&middot;(P<sub>target</sub> &minus; P<sub>trial</sub>).</div>`;
+        }
 
-
-        container.innerHTML = html;
-
-
+        container.innerHTML = `
+            <span class="text-[9px] uppercase tracking-widest px-3 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Sensitivity &middot; not a primary real-world effect</span>
+            <div class="text-[10px] uppercase tracking-widest opacity-60 mt-4 mb-1">1. Representativeness / positivity map (descriptive)</div>
+            ${cards}
+            ${controls}
+            <div class="text-[10px] uppercase tracking-widest opacity-60 mt-5 mb-1">2. Effect-modifier transport (labelled SENSITIVITY)</div>
+            ${transport}
+            <div class="text-[9px] opacity-55 leading-relaxed border-t border-slate-800 mt-5 pt-3">
+                <b>Guardrails.</b> External-validity sensitivity layer, not a primary real-world effect. Transport over pre-specified
+                effect modifiers only (Westreich 2017; Dahabreh 2020). Valid &gamma; = within/pure-strata contrast, not across-trial
+                regression. Rigorous transport (ML-NMR / MAIC) needs individual patient data. Target prevalences (NHANES / IDF / HSE) are editable defaults.
+            </div>`;
     }
-
-
 };
 
 
