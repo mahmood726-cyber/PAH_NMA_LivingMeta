@@ -4479,8 +4479,10 @@
 
             <div class="paper-toolbar no-print">
                 <span class="ps-title">Evidence Paper Studio</span>
+                <span class="ps-provenance" role="note">Numbers &amp; figures are auto-filled from your analysis</span>
                 <button id="btnWriteMode" title="Editing view: shows prompts, tips and tools.">Write</button>
                 <button id="btnCheckPaper" title="Check what is still missing before you export.">Check paper</button>
+                <button id="btnFocusMode" type="button" aria-pressed="false" title="Hide the surrounding RapidMeta bars for a distraction-free, full-screen writing space. Press Esc to exit.">⛶ Focus mode</button>
                 <button id="btnDownloadCleanPdf" class="primary" title="Your finished paper — THIS is the file you hand in. It opens your device’s “Save as PDF” (a couple of taps/clicks). Unlocks when every section is written.">⬇ Download my paper (PDF)</button>
                 <details class="toolbar-more"><summary title="Other tools and formats">More ▾</summary>
                   <div class="toolbar-more-body">
@@ -4489,6 +4491,7 @@
                     <button id="btnRefreshFigures" title="Pull the latest plots and tables from your analysis into the paper.">Refresh figures</button>
                     <button id="btnToggleTips" title="Show or hide the extra notes and examples. The short how-to under each box always stays.">Hide examples &amp; notes</button>
                     <button id="btnStartGuide" title="Reopen the “New to writing a paper? Start here” guide.">Start-here guide</button>
+                    <button id="btnWorkedExample" title="See a complete, finished example paper to learn from. Read-only — it does not change your work.">Show worked example</button>
                     <button id="btnDownloadJson" title="Save your paper as a JSON file">Save data</button>
                     <button id="btnUploadJson" title="Load a previously saved paper">Load data</button>
                     <button id="btnResetPaper" class="danger" title="Clear your written text (keeps evidence)">Reset text</button>
@@ -4525,6 +4528,7 @@
 
             <div class="paper-studio-layout">
                 <aside class="paper-sidebar no-print">
+                    <section id="paperNavPanel" class="paper-nav-panel"></section>
                     <section class="paper-mission-panel">
                         <h4>Your job</h4>
                         <p class="paper-mission"><strong>RapidMeta calculates the evidence.</strong> Your job is to explain what it means, what it does not mean, and why it matters. A clean PDF unlocks once the required interpretation fields are complete.</p>
