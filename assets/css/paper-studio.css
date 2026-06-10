@@ -17,7 +17,10 @@
   --paper-radius-lg: 22px;
   --paper-radius-md: 14px;
   --paper-shadow: 0 18px 50px rgba(15, 23, 42, 0.45);
-  --paper-max-width: 920px;
+  /* Desktop writing width. The studio shows the paper PLUS yellow writing boxes, tips
+     and figures, so it should fill the screen. The flex canvas grows to fill the whole
+     track (no cap) on screen; print/clean export is re-capped to A4 below. */
+  --paper-max-width: none;
   background: var(--paper-bg);
 }
 
@@ -57,6 +60,16 @@
 .paper-toolbar button.primary { background: var(--paper-accent); border-color: var(--paper-accent); color: #fff; }
 .paper-toolbar button.primary:hover { background: #1d4486; }
 .paper-toolbar .ps-save-status { font-size: 0.72rem; color: #94a3b8; margin-left: 0.4rem; }
+.paper-toolbar button#btnFocusMode[aria-pressed="true"] { background: var(--paper-accent); border-color: var(--paper-accent); color: #fff; }
+
+/* ---- focus mode (Feature A): hide the host chrome for a full-screen writing space ----
+   display:none reclaims the space AND removes the bars from the tab order + a11y tree
+   (what the review wanted inert/aria-hidden for), and works without the Fullscreen API. */
+body.ps-focus-mode #rapidmeta-integrity-badge,
+body.ps-focus-mode > header,
+body.ps-focus-mode nav[role="tablist"] { display: none !important; }
+.ps-provenance { display: none; }
+body.ps-focus-mode .ps-provenance { display: inline; font-size: 0.72rem; color: #94a3b8; }
 
 /* "More" overflow + download menus */
 .toolbar-more, .download-menu { position: relative; }
@@ -77,6 +90,15 @@
 .download-menu > summary::-webkit-details-marker { display: none; }
 .download-menu[open] > summary { background: #475569; }
 .download-menu-body { position: fixed; right: 14px; top: 54px; z-index: 60; width: 260px; max-height: calc(100vh - 70px); overflow-y: auto; background: #0f172a; border: 1px solid #334155; border-radius: 0.8rem; padding: 0.6rem; box-shadow: 0 18px 50px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 0.3rem; }
+/* Tall menus (esp. Advanced formats) overflow on short screens. Make the scroll obvious
+   and keep the wheel inside the menu so it never feels stuck:
+   - a VISIBLE scrollbar tells the user it scrolls;
+   - overscroll-behavior:contain stops the wheel from chaining to the page behind it. */
+.toolbar-more-body, .download-menu-body { overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #64748b #1e293b; }
+.toolbar-more-body::-webkit-scrollbar, .download-menu-body::-webkit-scrollbar { width: 11px; }
+.toolbar-more-body::-webkit-scrollbar-track, .download-menu-body::-webkit-scrollbar-track { background: #1e293b; border-radius: 6px; }
+.toolbar-more-body::-webkit-scrollbar-thumb, .download-menu-body::-webkit-scrollbar-thumb { background: #64748b; border-radius: 6px; border: 2px solid #1e293b; }
+.toolbar-more-body::-webkit-scrollbar-thumb:hover, .download-menu-body::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 /* On phones, render menus as a centered bottom sheet so nothing is clipped. */
 @media (max-width: 640px) {
   .download-menu-body, .toolbar-more-body { left: 50%; right: auto; top: auto; bottom: 0; transform: translateX(-50%); width: min(94vw, 380px); max-height: 75vh; border-radius: 0.9rem 0.9rem 0 0; }
@@ -126,6 +148,56 @@
 }
 .paper-mission strong { color: #f8fafc; }
 
+/* ---- left section navigator (Feature B) ---- */
+.paper-nav-panel { background: transparent !important; border: none !important; padding: 0 !important; }
+.section-nav-wrap { background: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: var(--paper-radius-md); padding: 0.6rem 0.8rem; }
+.section-nav-wrap > summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.section-nav-wrap > summary::-webkit-details-marker { display: none; }
+.section-nav-wrap .nav-h { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 800; color: #94a3b8; }
+.nav-progress { font-size: 0.7rem; font-weight: 700; color: #cbd5e1; }
+.nav-skip { display: inline-block; margin: 0.5rem 0 0.2rem; font-size: 0.74rem; font-weight: 700; color: #93c5fd; background: transparent; border: none; cursor: pointer; padding: 0.2rem 0; }
+.nav-skip:hover { color: #bfdbfe; text-decoration: underline; }
+.nav-grouplist { list-style: none; margin: 0.3rem 0 0; padding: 0; }
+.nav-group { list-style: none; margin-bottom: 0.45rem; }
+.nav-group-title { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 800; margin: 0.45rem 0 0.15rem; }
+.nav-group > ul { list-style: none; margin: 0; padding: 0; }
+.nav-item { display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left; background: transparent; border: none; color: #cbd5e1; font-size: 0.8rem; line-height: 1.3; padding: 0.4rem 0.45rem; border-radius: 6px; cursor: pointer; min-height: 34px; }
+.nav-item:hover { background: rgba(255, 255, 255, 0.06); }
+.nav-item[aria-current="step"] { background: rgba(59, 130, 246, 0.18); color: #fff; }
+.nav-glyph { flex: 0 0 auto; color: #64748b; font-weight: 700; }
+.nav-item.nav-done .nav-glyph { color: #4ade80; }
+.nav-item.nav-done .nav-label { color: #94a3b8; }
+.nav-item:focus-visible { outline: 3px solid var(--paper-accent) !important; outline-offset: 1px; }
+
+/* ---- one-section wizard (Feature C) ---- */
+.ps-wizard-bar { background: #f8fafc; border: 1px solid var(--paper-border); border-radius: var(--paper-radius-md); padding: 0.7rem 0.9rem; margin: 0 0 1.4rem; }
+.ps-wizard-bar.ps-wizard-bottom { margin: 1.6rem 0 0; }
+.ps-wizard-row { display: flex; align-items: center; gap: 0.9rem; }
+.ps-wizard-mid { flex: 1 1 auto; }
+.ps-step-label { font-weight: 800; font-size: 0.95rem; color: var(--paper-ink); }
+.ps-progress-wrap { height: 8px; background: #e5e7eb; border-radius: 999px; overflow: hidden; margin-top: 0.45rem; }
+.ps-progress-bar { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #3b82f6, #22c55e); transition: width 0.3s; }
+.ps-wiz-btn { font-size: 0.85rem; font-weight: 700; padding: 0.5rem 1.1rem; border-radius: 0.7rem; border: 1px solid var(--paper-accent); background: var(--paper-accent); color: #fff; cursor: pointer; min-height: 42px; }
+.ps-wiz-btn.ps-prev { background: #fff; color: var(--paper-accent); }
+.ps-wiz-btn:hover { filter: brightness(1.05); }
+.ps-wiz-btn:disabled { opacity: 0.4; cursor: default; }
+.ps-wiz-btn:focus-visible { outline: 3px solid var(--paper-accent) !important; outline-offset: 2px; }
+.ps-showall { margin-top: 0.6rem; font-size: 0.8rem; font-weight: 700; background: transparent; border: none; color: var(--paper-accent); cursor: pointer; text-decoration: underline; padding: 0.3rem 0; min-height: 32px; }
+/* visibility: one step at a time unless "show all" */
+#paperCanvas:not(.ps-show-all) .ps-step { display: none; }
+#paperCanvas:not(.ps-show-all) .ps-step.ps-current { display: block; }
+#paperCanvas.ps-show-all .ps-wizard-row,
+#paperCanvas.ps-show-all .ps-wizard-bottom { display: none; }
+/* the wizard chrome never belongs in an export */
+.export-clean-pdf .ps-wizard-bar, #paperCanvas.paper-mode-preview .ps-wizard-bar { display: none !important; }
+/* CRITICAL: export / preview / print must show the WHOLE paper, never just the current
+   wizard step — otherwise a student exporting mid-wizard gets a one-section PDF. */
+.export-clean-pdf .ps-step,
+#paperCanvas.paper-mode-preview .ps-step { display: block !important; }
+@media print { #paperCanvas .ps-step { display: block !important; } }
+@media (prefers-reduced-motion: reduce) { .ps-progress-bar { transition: none; } }
+@media (max-width: 700px) { .ps-wiz-btn { min-height: 44px; flex: 1 1 auto; } }
+
 /* ---- canvas ---- */
 .paper-canvas {
   flex: 1 1 auto;
@@ -174,11 +246,32 @@
 }
 .student-writing-box:focus, .student-editable:focus { background: #fffdf3; border-color: var(--paper-accent); }
 .student-writing-box:empty::before, .student-editable:empty::before { content: attr(data-placeholder); color: #7a6411; } /* AA contrast on the yellow box */
+/* An EMPTY inline editable (title, figure captions) has no intrinsic width, so it
+   collapses to ~12px when its placeholder text is short/absent — clicks then land on
+   the non-editable <h1>/<figcaption> and it looks "not editable". Guarantee a hit area:
+   captions get a minimum inline-block box; the title fills its whole line so a click
+   anywhere on the title row lands the caret. Once the field has text these rules stop
+   matching (:empty is false) and the value flows inline again (wrapping preserved). */
+.student-editable:empty { display: inline-block; min-width: 14ch; }
+.paper-canvas h1 .student-editable:empty { display: block; min-width: 0; }
 .student-task-label {
   display: inline-block; font-size: 0.68rem; font-weight: 800; text-transform: uppercase;
   letter-spacing: 0.06em; color: #705a0f; background: #fdf0c9; padding: 0.1rem 0.5rem;
   border-radius: 999px; margin-bottom: 0.2rem;
 }
+/* "Use this example to start" — fills an empty box with a clean starter sentence the
+   student then edits. Hidden in every export (.no-clean-pdf) and skipped by the word
+   counter (it is not a .student-writing-box). Hidden once the box has content. */
+.use-example {
+  display: inline-block; margin: 0.1rem 0 0.4rem; font-size: 0.74rem; font-weight: 700;
+  padding: 0.25rem 0.7rem; border-radius: 999px; cursor: pointer;
+  background: var(--paper-soft-blue); color: var(--paper-accent); border: 1px solid #cfe3fb;
+}
+.use-example:hover { background: #dceafb; }
+.use-example[hidden] { display: none; }
+/* "Open protocol page" link — shown only when the protocol-link field holds a real URL. */
+.protocol-open { display: inline-block; margin: 0.1rem 0 0.4rem; font-size: 0.82rem; font-weight: 700; color: var(--paper-accent); text-decoration: underline; }
+.protocol-open[hidden] { display: none; }
 .word-target { font-size: 0.72rem; color: var(--paper-muted); font-style: italic; }
 .live-wc { font-style: normal; font-weight: 700; }
 .live-wc.wc-low { color: #b45309; }
@@ -229,7 +322,15 @@ body.tips-hidden .onboard-card,
 body.tips-hidden .section-help,
 body.tips-hidden .glossary-card,
 body.tips-hidden .story-card,
+body.tips-hidden .case-card,
 body.tips-hidden .section-example { display: none !important; }
+
+/* real-trial teaching cases (story-based teaching; real, named, sourced) */
+.case-card { background: var(--paper-soft-blue); border: 1px solid #cfe3fb; border-left: 4px solid var(--paper-accent); border-radius: 0 10px 10px 0; padding: 0.2rem 0.9rem; margin: 0.4rem 0 0.9rem; }
+.case-card > summary { cursor: pointer; font-size: 0.82rem; font-weight: 700; color: var(--paper-accent); padding: 0.4rem 0; }
+.case-card .case-body p { font-size: 0.9rem; line-height: 1.6; color: #1e3a5f; margin: 0.2rem 0 0.5rem; }
+.case-card .case-rule { font-weight: 700; color: #14532d; }
+.case-card .case-source { font-size: 0.72rem; color: var(--paper-muted); }
 
 /* short-story teaching cards (secular parables) */
 .story-card { background: #fbf7ef; border: 1px solid #ece0c8; border-left: 4px solid #c9a84a; border-radius: 0 10px 10px 0; padding: 0.2rem 0.9rem; margin: 0.4rem 0 0.9rem; }
@@ -402,6 +503,30 @@ figcaption { font-size: 0.95rem; color: var(--paper-muted); border-top: 1px soli
 }
 #closeLearningDrawer { background: #334155; color: #e2e8f0; border: none; border-radius: 0.6rem; padding: 0.4rem 0.9rem; cursor: pointer; font-size: 0.8rem; }
 
+/* ---- worked-example modal (read-only exemplar) ---- */
+/* Mounted on <body>, OUTSIDE #tab-paper, so the --paper-* custom properties (scoped to
+   #tab-paper) do NOT resolve here — use explicit colours so text stays high-contrast
+   regardless of the surrounding dark theme. */
+.example-modal {
+  position: fixed; inset: 0; z-index: 80; background: rgba(15, 23, 42, 0.6);
+  display: flex; align-items: flex-start; justify-content: center; padding: 3vh 1rem; overflow-y: auto;
+}
+.example-modal[hidden] { display: none; }
+.example-modal-card {
+  background: #fff; color: #1f2933; max-width: 760px; width: 100%;
+  border-radius: 18px; box-shadow: 0 18px 50px rgba(15, 23, 42, 0.45); padding: 1.5rem 1.8rem 2rem;
+}
+.example-modal-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  position: sticky; top: 0; background: #fff; padding-bottom: 0.5rem; border-bottom: 1px solid #e5e7eb;
+}
+.example-modal-head strong { font-size: 1.05rem; color: #1f2933; }
+.example-modal-head button { font-size: 0.8rem; font-weight: 700; padding: 0.4rem 0.9rem; border-radius: 0.6rem; background: #334155; color: #fff; border: none; cursor: pointer; }
+.example-modal-head button:hover { background: #475569; }
+.example-modal-note { background: #eefaf2; border: 1px solid #bbf7d0; border-radius: 8px; padding: 0.5rem 0.75rem; margin: 0.8rem 0; font-size: 0.84rem; color: #14532d; }
+.example-modal-body h3 { font-size: 1rem; color: #2454a6; margin: 1.1rem 0 0.2rem; }
+.example-modal-body p { font-size: 0.92rem; line-height: 1.6; margin: 0.2rem 0; color: #1f2933; }
+
 /* ---- toast ---- */
 .paper-toast {
   position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
@@ -434,10 +559,24 @@ figcaption { font-size: 0.95rem; color: var(--paper-muted); border-top: 1px soli
   .paper-studio-layout { flex-direction: column; }
   .paper-sidebar { flex-basis: auto; width: 100%; position: static; max-height: none; flex-direction: row; flex-wrap: wrap; }
   .paper-sidebar section { flex: 1 1 240px; }
+  .paper-nav-panel { flex: 1 1 100% !important; }   /* the section navigator spans the full width on top */
   .paper-canvas { padding: 1.5rem; }
+}
+/* Phones: stack the sidebar cards, give comfortable 44px tap targets, keep the
+   navigator collapsed by default (JS) so it does not bury the paper. */
+@media (max-width: 700px) {
+  .paper-sidebar { flex-direction: column; }
+  .paper-sidebar section { flex: 1 1 100%; }
+  .nav-item, .nav-skip { min-height: 44px; }
+  .nav-item { font-size: 0.85rem; }
+  .paper-canvas { padding: 1.1rem; }
 }
 
 /* ---- print / PDF export ---- */
+/* The desktop writing width is wide; re-cap to an A4-like measure for the printed/PDF
+   sheet (the export path also adds .export-clean-pdf). Screen stays full-width. */
+@media print { #tab-paper { --paper-max-width: 920px; } }
+.export-clean-pdf .paper-canvas { max-width: 920px; }
 .export-clean-pdf .no-clean-pdf,
 .export-clean-pdf .figure-learning-row,
 .export-clean-pdf .student-task-label,

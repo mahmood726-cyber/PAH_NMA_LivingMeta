@@ -69,6 +69,31 @@
   };
   function wc(s) { return String(s || "").trim().split(/\s+/).filter(Boolean).length; }
   function reAlt(arr) { return new RegExp("\\b(" + arr.join("|").replace(/ /g, "\\s+") + ")\\b", "ig"); }
+
+  /* ---- substantive-gate helpers (Phase 2b): comprehension, not mere presence ---- */
+  // Normalised string + Levenshtein ratio, to detect an essentially-unedited example starter.
+  function normTxt(s) { return String(s || "").toLowerCase().replace(/\s+/g, " ").replace(/[.,;:!?"'’“”]+$/, "").trim(); }
+  function lev(a, b) {
+    var m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+    var prev = [], cur = [], i, j;
+    for (j = 0; j <= n; j++) prev[j] = j;
+    for (i = 1; i <= m; i++) {
+      cur[0] = i;
+      for (j = 1; j <= n; j++) {
+        var cost = a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1;
+        cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+      }
+      for (j = 0; j <= n; j++) prev[j] = cur[j];
+    }
+    return prev[n];
+  }
+  function similarity(a, b) { a = normTxt(a); b = normTxt(b); if (!a || !b) return 0; if (a === b) return 1; return 1 - lev(a, b) / Math.max(a.length, b.length); }
+  // The example starter offered for a field (read from the live "Use this example" button).
+  function starterFor(path) {
+    var el = document.querySelector('#paperCanvas .use-example[data-target="' + path + '"]');
+    return el ? (el.getAttribute("data-starter") || "") : "";
+  }
+  function num(v) { var n = Number(v); return isFinite(n) ? n : null; }
   var OVERCLAIM_RE = reAlt(OVERCLAIM_PHRASES);
   var GENERIC_RE = reAlt(GENERIC_PHRASES);
 
@@ -147,6 +172,27 @@
       while ((m = GENERIC_RE.exec(txt))) { hitG.push(m[1]); if (hitG.length > 2) break; }
       if (hitG.length) issues.push({ level: "warn", field: path, msg: 'Generic phrasing in ' + shortName(path) + ' ("' + hitG.join('", "') + '"). Add the specific outcome, population, or effect size.' });
     });
+
+    // 4. SUBSTANTIVE GATE (Phase 2b) — teach, do not templatise.
+    // 4a. Anti-duplication: an essentially-unedited example starter is not your own writing.
+    REQUIRED_STUDENT_FIELDS.forEach(function (f) {
+      var v = (get(f[0]) || "").trim(); if (!v) return;
+      var st = starterFor(f[0]); if (!st) return;
+      if (similarity(v, st) >= 0.9) {
+        issues.push({ level: "error", field: f[0], msg: "Write it in your own words — \"" + f[1] + "\" is still almost identical to the example. Change it to describe YOUR study." });
+      }
+    });
+    // 4b. Significance vs the no-effect line: cannot claim "significant" when the CI crosses null.
+    var a = (PS.state && PS.state.analysis) || {};
+    var lci = num(a.ciLower), uci = num(a.ciUpper);
+    var isRatio = /^(or|rr|hr)$|odds|risk ratio|hazard/i.test(String(a.effectMeasure || ""));
+    var nullVal = isRatio ? 1 : 0;
+    if (lci != null && uci != null && lci < nullVal && uci > nullVal) {
+      var SIG = /\b(statistically\s+significant|significantly|significant|p\s*[<=]\s*0?\.0?5)\b/i;
+      ["studentText.coverFinding", "studentText.abstractConclusion", "studentText.forestInterpretation", "studentText.discussionPrincipalFinding", "studentText.discussionConclusion"].forEach(function (fp) {
+        if (SIG.test(get(fp) || "")) issues.push({ level: "error", field: fp, msg: "Your confidence interval crosses the no-effect line (" + nullVal + "), so the result is not statistically significant — reword it (for example: the data are also compatible with no difference)." });
+      });
+    }
 
     // de-dup identical messages
     var seen = {}, dd = [];

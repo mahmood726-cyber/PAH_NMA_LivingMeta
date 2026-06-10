@@ -121,6 +121,14 @@
       // Certainty — read the rendered GRADE badge (machine-readable), not free text.
       if (!a.certainty) a.certainty = scrapeCertainty();
 
+      // Best-effort prefill of the registered-protocol link. Blank in the pilot; populated
+      // copies can expose RapidMeta.state.protocolUrl or a <meta name="protocol-url">.
+      if (!PS.state.studentText.protocolLink) {
+        var purl = (RM && RM.state && (RM.state.protocolUrl || (RM.state.protocol && RM.state.protocol.url))) || "";
+        if (!purl) { var mt = document.querySelector('meta[name="protocol-url"]'); if (mt) purl = mt.getAttribute("content") || ""; }
+        if (/^https?:\/\/\S+$/i.test(purl)) PS.state.studentText.protocolLink = purl;
+      }
+
       // HONESTY CHECK: did the analysis silently DROP included studies from pooling?
       // (e.g. trials included with an HR but no extracted event counts are dropped by the
       // event-based pool, so k < the number of included studies, with no warning.)
@@ -191,6 +199,16 @@
   function story(body) {
     return '<details class="story-card no-clean-pdf"><summary>📖 The idea, as a short story</summary><p>' + body + '</p></details>';
   }
+  // A REAL, named, sourced trial case that teaches a method point. Uses direct address and a
+  // question-then-answer rhythm, and ALWAYS ends on a number + a memorable method rule (never a
+  // ready-made sentence about the student's own data). Collapsed, optional, never exported.
+  function caseStudy(headline, body, rule, source) {
+    return '<details class="case-card no-clean-pdf"><summary>🔎 A real example: ' + esc(headline) + '</summary>' +
+      '<div class="case-body"><p>' + esc(body) + '</p>' +
+      (rule ? '<p class="case-rule">' + esc(rule) + '</p>' : '') +
+      (source ? '<p class="case-source">Source: ' + esc(source) + '</p>' : '') +
+      '</div></details>';
+  }
 
   // First-time "Start here" card. Dismissible; stays dismissed via localStorage.
   function onboardingCard() {
@@ -225,7 +243,7 @@
   // labelled multi-line student box. `help` = one-line how-to, shown as VISIBLE text
   // (.field-help) so it is keyboard/touch/screen-reader reachable — the help-dot is just
   // a decorative marker. `help` always stays visible (it is the core instruction).
-  function box(path, label, placeholder, wordTarget, help) {
+  function box(path, label, placeholder, wordTarget, help, starter) {
     // Live counter uses the REAL readiness floor (not a number parsed from the target text),
     // so "x / N words" always matches what the gate enforces.
     var floor = (PS.floorFor ? PS.floorFor(path) : 0) || "";
@@ -235,7 +253,19 @@
       (wordTarget ? '<div class="word-target no-clean-pdf">Aim for ' + esc(wordTarget) + ' <span class="live-wc" data-wc-for="' + path + '"></span></div>' : '') +
       '<div class="student-writing-box" contenteditable="true" role="textbox" aria-multiline="true" aria-label="' + escAttr(label) + '"' +
         (floor ? ' data-floor="' + floor + '"' : '') +
-        ' data-field="' + path + '" data-placeholder="' + escAttr(placeholder) + '">' + val(path) + '</div>';
+        ' data-field="' + path + '" data-placeholder="' + escAttr(placeholder) + '">' + val(path) + '</div>' +
+      (starter ? exampleBtn(path, starter) : '');
+  }
+  // "Use this example to start" — fills an empty box with a CLEAN starter sentence the
+  // student then edits. The starter must be gate-safe: NO bracket tokens ([condition]),
+  // NO "___", NO TBC/TODO — those are blocking placeholder patterns in the readiness
+  // check, so injecting a raw data-placeholder would self-block the Clean PDF. Hidden
+  // once the box has any content; always .no-clean-pdf so it never reaches an export.
+  function exampleBtn(path, starter) {
+    var filled = !!getNested(PS.state, path);
+    return '<button type="button" class="use-example no-clean-pdf" data-action="use-example"' +
+      ' data-target="' + escAttr(path) + '" data-starter="' + escAttr(starter) + '"' +
+      (filled ? ' hidden' : '') + '>✍️ Use this example to start</button>';
   }
   // Refresh the live "12 / 40 words" counters.
   PS.updateWordCounts = function () {
@@ -369,12 +399,14 @@
     html += '<div class="student-task-label no-clean-pdf">Title (15–20 words)</div>';
     html += helper("Click the highlighted title to edit it. A strong title says <em>what</em> was studied, <em>in whom</em>, and <em>how</em> (a meta-analysis). Words in [square brackets] are placeholders — replace each one with the real intervention or condition from your analysis.");
     html += '<h1>' + inlineBox("studentText.title", (auto("pico.intervention", "[intervention]")) + " for " + auto("pico.population", "[condition]") + ": a short systematic review and meta-analysis") + '</h1>';
+    html += exampleBtn("studentText.title", "The intervention for this condition: a short systematic review and meta-analysis");
 
     html += '<div class="cover-summary-card">';
     html += '<p><strong>Clinical question.</strong> In ' + auto("pico.population", "[population]") + ', does ' + auto("pico.intervention", "[intervention]") +
       ' compared with ' + auto("pico.comparator", "[comparator]") + ' improve ' + auto("pico.primaryOutcome", "[primary outcome]") + '?</p>';
     html += '<p><strong>Main finding.</strong> ' + box("studentText.coverFinding", "Your one-sentence headline", "After combining the studies, the overall result suggests...", "1 sentence",
-      "In one plain sentence, say what the study found and how sure we are. Match the verb to your GRADE certainty: High = “reduces”, Moderate = “probably reduces”, Low = “may reduce”, Very low = “the evidence is very uncertain about whether it reduces”. Avoid the word “proves”.") + '</p>';
+      "In one plain sentence, say what the study found and how sure we are. Match the verb to your GRADE certainty: High = “reduces”, Moderate = “probably reduces”, Low = “may reduce”, Very low = “the evidence is very uncertain about whether it reduces”. Avoid the word “proves”.",
+      "After combining the studies, the overall result suggests the intervention may improve this outcome, though how sure we can be depends on the certainty of the evidence.") + '</p>';
     html += helper("The “pooled estimate” (or “combined result”) is the single result you get after combining all the studies together. " + learnChip("pooling"));
     html += '<p><strong>Evidence base.</strong> ' + auto("analysis.kStudies") + ' studies · ' + auto("analysis.totalParticipants") + ' participants · ' + esc(a.model) + ' meta-analysis</p>';
     html += '<p><strong>Primary result.</strong> ' + esc(emEst) + ', ' + ciTxt + ' ' + learnChip("confidence_interval") + '</p>';
@@ -389,14 +421,21 @@
     html += '<h2>Abstract</h2>';
     html += helper("The abstract is a short summary (about 150 words) of the whole paper. Write it <em>last</em>: the Methods and Results sentences here are already filled from your analysis; you add the Background and the Conclusion.");
     html += box("studentText.abstractBackground", "Background", "[Condition] is important because...", "~2-3 sentences",
-      "One or two sentences on why this health problem matters — who it affects and what can go wrong for these patients.");
+      "One or two sentences on why this health problem matters — who it affects and what can go wrong for these patients.",
+      "This condition affects many people and can lead to serious harm over time. Current treatments help some patients, but important questions about benefit remain, which is why this question matters.");
+    html += example("Chronic kidney disease in adults with type 2 diabetes is common and progressive; many patients develop heart failure or die from cardiovascular causes despite standard care.",
+      "This disease is very common and serious.");
     html += box("studentText.abstractObjective", "Objective", "This short review aimed to assess whether...", "1 sentence",
-      "State the question in one sentence: did the intervention help, for this outcome, in this population?");
+      "State the question in one sentence: did the intervention help, for this outcome, in this population?",
+      "This short review aimed to assess whether the intervention improves the main outcome compared with the comparator in this population.");
+    html += example("We assessed whether finerenone reduces cardiovascular events compared with placebo in adults with CKD and type 2 diabetes.",
+      "We looked at whether the drug works.");
     html += '<p><strong>Methods.</strong> A rapid systematic review and ' + esc(a.model).toLowerCase() +
       ' meta-analysis combined ' + auto("analysis.kStudies") + ' studies (' + auto("analysis.totalParticipants") + ' participants) for ' + auto("pico.primaryOutcome", "the primary outcome") + '.</p>';
     html += '<p><strong>Results.</strong> ' + abstractResultsProse() + '</p>';
     html += box("studentText.abstractConclusion", "Conclusion", "In patients with... the findings suggest... however this should be interpreted cautiously because...", "~2-3 sentences",
-      "Answer your question in 1–2 sentences, then add a caution. Match the verb to your GRADE certainty and avoid “proves”.");
+      "Answer your question in 1–2 sentences, then add a caution. Match the verb to your GRADE certainty and avoid “proves”.",
+      "Taken together, the findings suggest the intervention may offer a modest benefit for this outcome. This should be read with caution because the certainty of the evidence is limited and only a small number of studies contributed.");
     html += example("In adults with CKD and type 2 diabetes, finerenone probably reduces cardiovascular events by a modest amount; certainty is moderate, so the size of the benefit remains uncertain.",
       "Finerenone works and reduces heart problems.");
 
@@ -404,13 +443,20 @@
     html += '<h2>Introduction</h2>';
     html += helper("The introduction answers “why does this question matter?” Three short paragraphs: the problem, the intervention, and why combining studies helps. Write for a reader who knows medicine but not this exact topic.");
     html += box("studentText.introductionClinicalProblem", "Why this condition matters", "[Condition] is clinically important because... Patients with [condition] are at risk of...", "~3-4 sentences",
-      "Describe the condition and its consequences. Use the population shown in the clinical question above.");
+      "Describe the condition and its consequences. Use the population shown in the clinical question above.",
+      "This condition is clinically important because it is common and tends to worsen over time. Patients affected by it are at risk of serious complications, and their quality of life can decline. Even with current standard treatment, many still experience poor outcomes. This combination of high risk and limited options is what makes better treatment worthwhile and is the reason this review question matters.");
     html += example("Chronic kidney disease in adults with type 2 diabetes is common and tends to get worse over time. Even when patients take the usual treatments, many still go on to develop heart failure or die from cardiovascular causes, and their kidney function keeps declining. This combination of high risk and limited options is why better treatments are needed and why this question matters.",
       "CKD is a serious disease that affects many people.");
     html += box("studentText.introductionInterventionRationale", "Why this intervention might help", auto("pico.intervention", "[Intervention]") + " may improve outcomes by... However, uncertainty remained because...", "~2-3 sentences",
-      "Say how the treatment could work, then note what was still unknown before this review.");
+      "Say how the treatment could work, then note what was still unknown before this review.",
+      "The intervention may improve outcomes by acting on a mechanism relevant to this condition. Before this review, however, it was unclear how large and how reliable that benefit was across different patients.");
+    html += example("Finerenone blocks mineralocorticoid receptors, which may reduce the inflammation and scarring that drive heart and kidney damage; how much that helps across trials was unclear before this review.",
+      "The drug might help the heart.");
     html += box("studentText.introductionWhyReviewNeeded", "Why combining studies is useful here", "Combining studies is useful here because... Therefore, this short paper asks whether...", "~2-3 sentences",
-      "Explain that combining trials gives a more precise answer than any single trial, then state your question.");
+      "Explain that combining trials gives a more precise answer than any single trial, then state your question.",
+      "Combining the available studies is useful here because each single study on its own is too small to give a precise answer. Pooling them gives a clearer estimate, so this short paper asks whether the intervention improves the main outcome.");
+    html += example("No single trial was large enough to settle the question precisely, so pooling the major trials gives a more reliable estimate of whether the drug helps.",
+      "Combining studies is useful and important.");
 
     /* methods */
     html += '<h2>Methods</h2>';
@@ -419,10 +465,14 @@
     // Eligibility is STUDENT-stated, not asserted by the tool (it cannot know your actual design).
     html += '<p><strong>Eligibility.</strong> ' + box("studentText.methodsEligibility", "Eligibility criteria",
       "We included [study design] of " + auto("pico.intervention", "[intervention]") + " versus " + auto("pico.comparator", "[comparator]") + " in " + auto("pico.population", "[population]") + " reporting " + auto("pico.primaryOutcome", "[primary outcome]") + ". We excluded...", "1-2 sentences",
-      "State the ACTUAL study designs you included and your main inclusion/exclusion rules — do not leave the default if it is not what you did. The tool cannot know this for you.") + '</p>';
+      "State the ACTUAL study designs you included and your main inclusion/exclusion rules — do not leave the default if it is not what you did. The tool cannot know this for you.",
+      "We included randomised controlled trials comparing the intervention with the comparator in this population and reporting the main outcome. We excluded studies that were not randomised or did not report the outcome of interest.") + '</p>';
+    html += example("We included randomised controlled trials of finerenone versus placebo in adults with CKD and type 2 diabetes that reported cardiovascular events; we excluded non-randomised studies and trials without that outcome.",
+      "We included all the relevant studies about the drug.");
     methodsProse().forEach(function (par) { html += '<p>' + (par.label ? '<strong>' + esc(par.label) + '.</strong> ' : '') + par.text + '</p>'; });
     html += box("studentText.methodsStudentLimitation", "One limitation of this rapid workflow", "One limitation of this rapid workflow is...", "1-2 sentences",
-      "Name one shortcut a rapid review takes (e.g. fewer databases, faster screening) and say how it could affect the result.");
+      "Name one shortcut a rapid review takes (e.g. fewer databases, faster screening) and say how it could affect the result.",
+      "One limitation of this rapid workflow is that the search covered fewer databases than a full systematic review, so a relevant study could have been missed, which may affect the result.");
 
     /* results */
     html += '<h2>Results</h2>';
@@ -446,12 +496,17 @@
     html += figureCard(3, "Forest plot for the primary outcome", ["forest_plot", "confidence_interval", "effect_size"], "forestPlotPaperSlot", "figures.forestPlot.caption",
       "The overall result points toward... The confidence interval (the range of likely true effects) is narrow/wide, which means... The size of the effect is / is not large enough to matter because...");
     html += box("studentText.forestInterpretation", "Interpret the forest plot", "The overall result points toward... The confidence interval means... This result is / is not clinically important because...", "~3-4 sentences",
-      "Cover three separate things. (1) Direction: which treatment looks better? (2) Precision: is the confidence interval narrow (confident) or wide (uncertain)? A confidence interval is the range of effects compatible with your data; whether it crosses the no-effect line (1 for ratios, 0 for differences) is about direction, not precision. (3) Size: even if the effect is real, is it big enough to change care? New to forest plots? Click “What is a forest plot?” above.");
+      "Cover three separate things. (1) Direction: which treatment looks better? (2) Precision: is the confidence interval narrow (confident) or wide (uncertain)? A confidence interval is the range of effects compatible with your data; whether it crosses the no-effect line (1 for ratios, 0 for differences) is about direction, not precision. (3) Size: even if the effect is real, is it big enough to change care? New to forest plots? Click “What is a forest plot?” above.",
+      "The pooled result points toward one of the two groups rather than showing no difference. Because the confidence interval is fairly narrow, the estimate is reasonably precise. Whether an effect of this size is large enough to change care depends on the outcome, so it should be judged against what matters clinically.");
     html += example("The overall result favoured finerenone: its confidence interval stayed entirely below 1 (the no-effect line for a ratio), so a benefit in this direction is statistically supported. The interval was also fairly narrow, which means the result is reasonably precise. Given the moderate GRADE certainty, a reduction of this size would probably be worthwhile for high-risk patients, although the exact size is uncertain.",
       "The result was significant and shows the drug works.");
     html += '<div class="section-example no-clean-pdf"><span class="ex-good">✓ If your CI crosses the line:</span> The estimate pointed toward the intervention, but the confidence interval crossed the no-effect line, so the data are also compatible with no real difference; the result is uncertain rather than clearly positive.</div>';
     html += helper("“How big is clinically big?” — there is no universal threshold for whether an effect matters in practice. If you are not sure, it is completely fine to say the size is uncertain and to flag it for your supervisor; saying so is good scientific judgement, not a weakness. " + learnChip("clinical_importance"));
     html += story("A merchant weighs a sack of grain just once and announces its worth. A wiser one weighs it many times, takes the average, and notes how far the readings spread. The average is your pooled estimate; the spread is your confidence interval. A narrow spread: speak with some confidence. A wide spread: speak softly. And weighing carefully tells you the weight — not whether the grain is worth buying. That last question — is it worth it? — is yours to judge.");
+    html += caseStudy("when more data flipped the answer",
+      "A wide confidence interval is a warning, not a verdict. Before 2004 the smaller studies left it unclear whether steroids helped severe head injury, and many clinicians assumed they did. Then the CRASH trial randomised over 10,000 patients and found steroids actually increased deaths, with a relative risk of about 1.18. A wide, uncertain estimate had been resolved — and the direction reversed. So when your interval is wide, say so, and hold your conclusion loosely until the data are precise.",
+      "Until the interval is narrow, hold your conclusion loosely.",
+      "CRASH trial, Lancet 2004.");
 
     html += renderOutcomeSections();   // one section per secondary outcome
 
@@ -464,10 +519,15 @@
       (a.predictionInterval ? '<button type="button" data-learn="prediction_interval" aria-haspopup="dialog">What is a prediction interval?</button>' : '') + '</div>';
     html += helper("Heterogeneity = how much the studies’ results differ beyond chance. I² estimates the share of that variation that is real difference rather than chance: a high I² means results vary a lot; a low or 0% I² is consistent with agreement, but with only a few studies it can simply mean there were too few to detect a difference — so do not state it as proof the studies agree. τ² is the actual spread of true effects between studies; look at it and the prediction interval too.");
     html += box("studentText.heterogeneityInterpretation", "Interpret the heterogeneity", "The studies’ results varied a little / a lot, which suggests... Combining them still makes sense / is questionable because...", "~2-3 sentences",
-      "Is the I² low, moderate or high? If high, why might the studies differ (different patients, doses, follow-up)? Is combining them still reasonable? Remember a low I² with few studies is not proof of agreement.");
+      "Is the I² low, moderate or high? If high, why might the studies differ (different patients, doses, follow-up)? Is combining them still reasonable? Remember a low I² with few studies is not proof of agreement.",
+      "The results across the studies varied only a little, which suggests they are broadly consistent. With only a few studies this agreement should be read cautiously rather than as proof, but combining them still seems reasonable.");
     html += example("I² was low and τ² close to zero, so the three trials gave broadly consistent results; with only three studies this agreement should be read cautiously rather than as proof.",
       "There was no heterogeneity so the studies all agree.");
     html += story("A traveller crossing a wide land does not trust a single well. She drinks from many. If every well runs sweet, she grows confident the water is good. If some run sweet and some run bitter, she asks why — different ground, different depth — before she trusts any. Your studies are the wells. Agreement across many is reassuring; disagreement is a question to answer, not a flaw to hide. And with only two or three wells, even sweet water proves little — there were simply too few to know.");
+    html += caseStudy("when many small trials agreed — and one big trial did not",
+      "Should you trust a benefit that keeps appearing across several small trials? In the early 1990s, small trials and an early meta-analysis suggested magnesium lowered deaths after a heart attack. Then one very large, carefully run trial, ISIS-4, enrolled 58,050 patients — and found no benefit at all. The hopeful pattern in the small studies had not survived. For you: a signal repeated across small trials is a question, not an answer, and heterogeneity together with study size tells you how much to trust it.",
+      "One large, careful trial can outweigh many small, hopeful ones.",
+      "ISIS-4, Lancet 1995; Egger & Davey Smith, BMJ 1995.");
 
     html += '<h3>Risk of bias</h3>';
     html += helper("Risk of bias asks whether the way a study was run could have distorted its result — separate from whether the study is “good”. Link each concern to <em>how</em> it could change the answer.");
@@ -479,7 +539,8 @@
     html += figureCard(5, "GRADE summary of findings", ["grade"], "gradePaperSlot", "figures.gradeTable.caption",
       "The certainty of evidence was judged as ___. It was downgraded mainly for ___ (risk of bias / inconsistency / indirectness / imprecision / publication bias) because ___.");
     html += box("studentText.certaintyInterpretation", "Interpret the certainty", "The certainty of evidence was rated as... This was mainly because... This affects how strongly I can word the conclusion because...", "~2-3 sentences",
-      "State the GRADE rating, the main reason(s) it is not “High” (one of the five GRADE domains), and what that means for how strongly you can word your conclusion.");
+      "State the GRADE rating, the main reason(s) it is not “High” (one of the five GRADE domains), and what that means for how strongly you can word your conclusion.",
+      "The certainty of evidence was rated below the highest level, mainly because of limitations such as the small number of studies or imprecision. This means the conclusion should be worded carefully rather than definitively.");
     html += example("Certainty was Moderate, downgraded for imprecision because only three small trials contributed; the conclusion is therefore worded cautiously rather than definitively.",
       "The evidence was good quality.");
     html += story("Two maps lie before you, both pointing the same way. One was drawn by many careful surveyors who walked every mile; the other sketched in haste by a single hand. You might follow either — but you would trust the careful map further, and you would say so out loud. GRADE certainty is how carefully the map was drawn. It is not where the road leads (that is the effect); it is how much to trust the drawing. Match the strength of your words to the strength of your map.");
@@ -488,24 +549,42 @@
     html += helper("Optional. A funnel plot explores whether small studies are missing, which can be a sign of publication bias — but an uneven (asymmetric) funnel can also come from real differences between studies or from chance, and the plot is unreliable with fewer than about 10 studies. With few studies, describe what you see but do not conclude there is publication bias.");
     html += figureCard(6, "Funnel plot", ["funnel_plot"], "funnelPaperSlot", "figures.funnelPlot.caption",
       "The funnel plot suggests... However, funnel plots are difficult to interpret when...");
+    html += caseStudy("the studies that were never published",
+      "If only the flattering studies get published, what happens to a meta-analysis? Researchers obtained all 74 antidepressant trials registered with the US drug regulator (the FDA). Almost every positive trial was published; most negative ones were not, or were written up to look positive. When the missing trials were put back in, the apparent benefit shrank by about a third. That gap between what was run and what you can see is exactly what a funnel plot is trying to expose.",
+      "The studies you cannot see can change the answer.",
+      "Turner et al., New England Journal of Medicine 2008;358:252-260.");
 
     /* discussion */
     html += '<h2>Discussion</h2>';
     html += helper("The discussion is where you say what it all <em>means</em>. Work through it in order: (1) the main finding, (2) why it matters, (3) how it fits other evidence, (4) strengths, (5) limitations, (6) a careful conclusion. One short paragraph each.");
     html += box("studentText.discussionPrincipalFinding", "Main finding", "The main finding of this short review is...", "1-2 sentences",
-      "Restate your main result in plain words — no statistics needed here.");
+      "Restate your main result in plain words — no statistics needed here.",
+      "The main finding of this short review is that the intervention appears to affect the outcome in one direction, though the size of that effect should be read alongside how certain the evidence is.");
+    html += example("Across the pooled trials, finerenone was associated with fewer cardiovascular events than placebo — a modest but consistent benefit.",
+      "The drug works for heart problems.");
     html += box("studentText.discussionClinicalMeaning", "Clinical meaning", "This would matter clinically if... For a doctor or patient it would / might / would not change practice because...", "~2-3 sentences",
-      "This matters only if the effect is real and big enough. Look at the estimate AND the certainty, then say whether it would change what a doctor or patient does.");
+      "This matters only if the effect is real and big enough. Look at the estimate AND the certainty, then say whether it would change what a doctor or patient does.",
+      "This would matter clinically only if the effect is both real and large enough to notice. Considering the estimate together with the certainty, it may or may not be enough to change what a doctor or patient decides.");
+    html += example("If the benefit is real, preventing cardiovascular events in such high-risk patients would matter to doctors and patients; but the moderate certainty means it should inform practice rather than dictate it.",
+      "This could be useful for patients.");
     html += box("studentText.discussionComparison", "Comparison with other evidence", "These findings are consistent with / differ from...", "1-2 sentences",
-      "Do your results agree with guidelines or other reviews you know of? Say so.");
+      "Do your results agree with guidelines or other reviews you know of? Say so.",
+      "These findings appear broadly consistent with what other reviews and guidelines report, although direct comparison is limited by differences in the patients and outcomes studied.");
+    html += example("These results agree with the direction of the individual trial reports and current guideline signals for this drug class.",
+      "Other studies found similar things.");
     html += box("studentText.discussionStrengths", "Strengths", "A strength of this review is...", "1-2 sentences",
-      "What did this review do well — e.g. combining all major trials, large total sample, consistent results?");
+      "What did this review do well — e.g. combining all major trials, large total sample, consistent results?",
+      "A strength of this review is that it brings together the main available trials into a single estimate, giving a clearer overall picture than any one study alone.");
+    html += example("A strength is that the review pools the major randomised trials into one estimate, giving more precision than any single trial alone.",
+      "This review has several strengths.");
     html += box("studentText.discussionLimitations", "Main limitation", "The main limitation is...", "~3-4 sentences",
-      "Be honest about the biggest weakness (few studies, risk of bias, short follow-up, indirect population) and how it affects trust in the result.");
+      "Be honest about the biggest weakness (few studies, risk of bias, short follow-up, indirect population) and how it affects trust in the result.",
+      "The main limitation is that only a small number of trials contributed, so the pooled estimate is imprecise and the confidence interval is fairly wide. The included trials may also differ from everyday patients in important ways, which limits how widely the result applies. Finally, as a rapid review the search was lighter than a full systematic review, so a relevant study could have been missed.");
     html += example("The main limitation is that only three trials contributed, so the pooled estimate is imprecise (a fairly wide confidence interval), and this is one reason the certainty of evidence was rated moderate rather than high. The included trials also enrolled relatively few patients with advanced kidney disease, so the finding may not apply well to that group. Finally, as a rapid review, the search was lighter than a full systematic review, so a relevant study could have been missed.",
       "This study has some limitations like all studies do.");
     html += box("studentText.discussionConclusion", "Balanced conclusion", "The safest interpretation is... Future research should...", "~2-3 sentences",
-      "Answer the question without overclaiming, matched to your certainty rating, then suggest one useful next study. Avoid “proves” and “definitely”.");
+      "Answer the question without overclaiming, matched to your certainty rating, then suggest one useful next study. Avoid “proves” and “definitely”.",
+      "The safest interpretation is that the intervention may improve the outcome by a modest amount, but the certainty of the evidence means this is not definitive. The result is most applicable to patients similar to those in the included trials. A larger, well-conducted trial would help confirm whether the benefit holds.");
     html += example("In adults with chronic kidney disease and type 2 diabetes, finerenone probably reduces cardiovascular events by a modest amount compared with placebo, although the certainty of evidence is moderate and the exact size of the benefit remains uncertain. The findings are most applicable to high-risk patients like those in the included trials. A larger trial focusing on people with advanced kidney disease would help confirm whether the benefit holds in that group.",
       "Finerenone works and should be given to all patients.");
     html += story("A witness stands before the court. She is asked only one thing: what did you see? Not what you hoped, not what would please the room — what you saw, and how clearly. If the light was dim, she says so. Your conclusion is your testimony. Report what the evidence shows and how clearly you saw it. “Probably reduces, with moderate certainty” is the testimony of an honest witness. “Proves it works for everyone” is the testimony of one who has already left the room.");
@@ -515,11 +594,20 @@
     html += '<div class="no-clean-pdf">';
     html += helper("This part is for your learning, not the final paper (it stays out of the Clean PDF). You cannot get this part wrong — just answer honestly. Reflecting like this is how you build judgement.");
     html += box("studentText.reflectionLearning", "The most important thing I learned", "The most important thing I learned was...", "1-2 sentences",
-      "Write one thing you understand now that you did not before you started.");
+      "Write one thing you understand now that you did not before you started.",
+      "The most important thing I learned was how much the certainty of the evidence matters, not just the size of the effect, when deciding how strongly to state a conclusion.");
+    html += example("I learned that the certainty rating, not just the effect size, decides how strongly I can word a conclusion.",
+      "I learned a lot about meta-analysis.");
     html += box("studentText.reflectionMostTrusted", "The evidence I trust most", "The part of the evidence I trust most is...", "1-2 sentences",
-      "Name the part of your evidence you believe most, and say why (e.g. many studies, consistent results, low risk of bias).");
+      "Name the part of your evidence you believe most, and say why (e.g. many studies, consistent results, low risk of bias).",
+      "The part of the evidence I trust most is the pooled estimate for the main outcome, because it draws on the largest trials and their results pointed in a similar direction.");
+    html += example("I trust the pooled primary-outcome estimate most, because it draws on the largest trials and they pointed the same way.",
+      "I trust the results.");
     html += box("studentText.reflectionLeastConfident", "Where I am least confident", "The part I am least confident about is...", "1-2 sentences",
-      "Naming what you are unsure about is a sign of good scientific judgement — it is required, and it is one of the most valuable lines you will write.");
+      "Naming what you are unsure about is a sign of good scientific judgement — it is required, and it is one of the most valuable lines you will write.",
+      "The part I am least confident about is whether the result applies to patients who were underrepresented in the trials, because there were few of them and the follow-up was relatively short.");
+    html += example("I am least sure whether the benefit holds in people with advanced kidney disease, because few such patients were included and follow-up was short.",
+      "I am not confident about some parts of this.");
     html += '</div>';
 
     /* author transparency (on-screen coaching, working PDF only) */
@@ -532,9 +620,16 @@
     html += helper("These statements stay in the final PDF — journals and integrity policies require them. The first two are written for you; complete funding, competing interests and registration.");
     html += '<p><strong>Use of automated tools.</strong> The structured numerical results, the Methods and Results summary text, the figures, the GRADE certainty summary, and the reference identifiers were generated automatically by the RapidMeta Evidence Paper Studio from the author’s own meta-analysis. The introduction, figure captions, all interpretation, the discussion and the conclusions are the author’s own work. Because the auto-generated sections come from a shared template, their wording may be similar to other papers produced with the same tool.</p>';
     html += '<p><strong>Data availability and provenance.</strong> The analysis was based on data the author extracted from the included trials. Sources searched: ' + esc(PS.state.search.databases || "(state databases)") + (PS.state.search.searchDate ? ', last searched ' + esc(PS.state.search.searchDate) : '') + '. Underlying trial data and the analysis project are available from the author on request.</p>';
-    html += '<p><strong>Protocol and registration.</strong> ' + box("studentText.registration", "Protocol / registration", "This review was registered as... / This review was not registered.", "1 sentence", "State the registration (e.g. PROSPERO number) or say it was not registered.") + '</p>';
-    html += '<p><strong>Funding.</strong> ' + box("studentText.funding", "Funding", "This work received no specific funding. / Funded by...", "1 sentence", "Name any funding source, or state there was none.") + '</p>';
-    html += '<p><strong>Competing interests.</strong> ' + box("studentText.coi", "Competing interests", "The author declares no competing interests. / The author declares...", "1 sentence", "Declare any competing interests, or state there are none.") + '</p>';
+    html += '<p><strong>Protocol and registration.</strong> ' + box("studentText.registration", "Protocol / registration", "This review was registered as... / This review was not registered.", "1 sentence", "State the registration (e.g. PROSPERO number) or say it was not registered.",
+      "This review was not formally registered before it was carried out.") + '</p>';
+    html += '<p class="protocol-link-row"><strong>Protocol link.</strong> ' +
+      box("studentText.protocolLink", "Protocol link (optional)", "https://… link to your timestamped or registered protocol", null,
+        "If your protocol is published online (for example a timestamped GitHub Pages page, an OSF record, or a PROSPERO registration), paste its web address here so readers can open and verify it. RapidMeta fills this in automatically when it knows the published address.") +
+      '<a class="protocol-open no-clean-pdf" id="protocolOpenLink" target="_blank" rel="noopener noreferrer" hidden>↗ Open protocol page</a></p>';
+    html += '<p><strong>Funding.</strong> ' + box("studentText.funding", "Funding", "This work received no specific funding. / Funded by...", "1 sentence", "Name any funding source, or state there was none.",
+      "This work received no specific funding from any agency.") + '</p>';
+    html += '<p><strong>Competing interests.</strong> ' + box("studentText.coi", "Competing interests", "The author declares no competing interests. / The author declares...", "1 sentence", "Declare any competing interests, or state there are none.",
+      "The author declares no competing interests.") + '</p>';
 
     /* references */
     html += '<h2>References</h2>';
@@ -548,6 +643,18 @@
 
     var canvas = document.getElementById("paperCanvas");
     if (canvas) canvas.innerHTML = html;
+    PS.updateProtocolLink();
+    PS.buildWizard();
+  };
+
+  // Show a clickable "Open protocol page" link only when the field holds a real http(s) URL.
+  PS.updateProtocolLink = function () {
+    var a = document.getElementById("protocolOpenLink");
+    if (!a) return;
+    var el = document.querySelector('#paperCanvas [data-field="studentText.protocolLink"]');
+    var url = (el ? (el.innerText || "") : (getNested(PS.state, "studentText.protocolLink") || "")).trim();
+    if (/^https?:\/\/\S+$/i.test(url)) { a.href = url; a.hidden = false; }
+    else { a.removeAttribute("href"); a.hidden = true; }
   };
 
   /* ---------------- references (deterministic; never LLM-generated) ---------------- */
@@ -823,7 +930,11 @@
       : PS.cloneVisual("#prismaFlowContainer", "#prismaPaperSlot", "prisma", 760, 520);
     // Forest + funnel: render OUR OWN legible plots (with prediction interval +
     // x-range) from the computed results, instead of cloning the dark host images.
-    var res = (window.RapidMeta && RapidMeta.state) ? RapidMeta.state.results : null;
+    // The host nulls state.results when you leave the Analysis tab, so cache the last good
+    // one — keeps the paper's figures stable regardless of the host's scoping lifecycle.
+    var liveRes = (window.RapidMeta && RapidMeta.state) ? RapidMeta.state.results : null;
+    if (liveRes && liveRes.plotData) PS._lastResults = liveRes;
+    var res = (liveRes && liveRes.plotData) ? liveRes : (PS._lastResults || liveRes);
     var primaryLabel = (PS.state.pico && PS.state.pico.primaryOutcome) || "primary outcome";
     var forestOk = PS.renderOwnFig("forest", "forestPlotPaperSlot", res, primaryLabel);
     if (!forestOk) ensurePlaceholder("#forestPlotPaperSlot", "forestPlot", "The forest plot appears here once your analysis has results. Open the Analysis Suite, then click “Refresh figures”.");
@@ -841,14 +952,37 @@
     return !!res && (nonEmpty("#prisma-flow-container") || nonEmpty("#prismaFlowContainer"));
   }
 
+  // Make the host analysis computable WITHOUT the manual Analysis-tab visit / extraction tick:
+  // the host's run() scopes to state.selectedOutcome ?? 'default', and 'default' usually has no
+  // event counts, so results stay null. Select an outcome that actually has data so all the
+  // plots (forest/funnel/GRADE) render the moment Paper Studio opens.
+  PS.ensureAnalysisReady = function () {
+    try {
+      var RM = window.RapidMeta;
+      if (!RM || !RM.state) return;
+      var scope = RM.getAnalysisScopeDetails ? RM.getAnalysisScopeDetails() : null;
+      var trials = (scope && scope.eligible && scope.eligible.length) ? scope.eligible : (RM.state.trials || []);
+      var outcomesOf = function (t) { return (t && t.data && t.data.allOutcomes) || []; };
+      var hasData = function (k) { return k && trials.some(function (t) { return outcomesOf(t).some(function (o) { return o.shortLabel === k; }); }); };
+      if (!hasData(RM.state.selectedOutcome)) {
+        var key = null;
+        trials.some(function (t) { var os = outcomesOf(t); if (os.length) { key = os[0].shortLabel; return true; } return false; });
+        if (key) RM.state.selectedOutcome = key;
+      }
+    } catch (e) {}
+  };
+
   // force=true re-runs the host pipeline even if results exist (Refresh button).
   PS.embedFigures = function (force) {
+    PS.ensureAnalysisReady();
     var haveResults = !!(window.RapidMeta && RapidMeta.state && RapidMeta.state.results);
-    // Only re-run heavy host computation when results are missing, or explicitly forced.
+    // Compute the analysis + figures up front (missing results, or explicitly forced).
     if (force || !haveResults) {
+      PS.__selfRun = true;   // suppress the auto-update hook for our own pipeline runs
       try { if (window.AnalysisEngine && AnalysisEngine.run) AnalysisEngine.run(); } catch (e) {}
       try { if (window.ReportEngine && ReportEngine.generate) ReportEngine.generate(); } catch (e) {}
       try { if (window.PrismaEngine && PrismaEngine.renderToElement) PrismaEngine.renderToElement("prisma-flow-container"); } catch (e) {}
+      PS.__selfRun = false;
     }
     var attempt = 0, MAX = 4;
     var captionsBefore = countRequiredCaptions();
@@ -868,6 +1002,35 @@
     var n = 0; ["prisma", "forestPlot", "gradeTable"].forEach(function (k) { if (PS.state.figures[k] && PS.state.figures[k].available) n++; });
     return n;
   }
+  // Auto-update: re-clone the figures from the host's (re-computed) results WITHOUT re-running
+  // the engines — used when the host analysis is re-run externally (the "living" data changes).
+  PS.__softRefresh = function () {
+    try {
+      var ae = document.activeElement;
+      var typing = ae && ae.closest && ae.closest('#paperCanvas [contenteditable="true"]');
+      PS.loadRapidMetaData();          // refresh the auto-filled numbers from the new analysis
+      if (!typing) PS.render();         // re-render the body (skipped mid-typing to keep focus)
+      clonePass();                      // re-render the figures
+      PS.updateChecklist();
+      PS.toast("Updated from your latest analysis.");
+    } catch (e) {}
+  };
+  // Wrap the host's AnalysisEngine.run ONCE so an external re-run refreshes Paper Studio while
+  // it is open. Our own runs set PS.__selfRun, so this never recurses.
+  PS.hookLiveUpdate = function () {
+    var AE = window.AnalysisEngine;
+    if (!AE || typeof AE.run !== "function" || AE.__psLiveHooked) return;
+    AE.__psLiveHooked = true;
+    var orig = AE.run.bind(AE);
+    AE.run = function () {
+      var out = orig.apply(this, arguments);
+      if (!PS.__selfRun && document.body && document.body.dataset.paperMode) {
+        clearTimeout(PS.__liveTimer);
+        PS.__liveTimer = setTimeout(PS.__softRefresh, 200);
+      }
+      return out;
+    };
+  };
 
   function ensurePlaceholder(sel, figKey, msg) {
     var el = document.querySelector(sel);
@@ -882,6 +1045,185 @@
     canvas.classList.add("paper-mode-" + mode);
     document.body.dataset.paperMode = mode;
   };
+
+  /* ---------------- focus mode (Feature A) ---------------- */
+  // CSS full-screen (NOT the Fullscreen API): hides the host chrome so Paper Studio fills the
+  // screen like a word processor. Esc exits; the toggle stays visible; focus returns on exit.
+  PS.setFocusMode = function (on) {
+    document.body.classList.toggle("ps-focus-mode", on);
+    var btn = document.getElementById("btnFocusMode");
+    if (btn) { btn.setAttribute("aria-pressed", on ? "true" : "false"); btn.textContent = on ? "⛶ Exit focus" : "⛶ Focus mode"; }
+    PS.toast(on ? "Focus mode on — press Esc or “Exit focus” to leave." : "Focus mode off.");
+  };
+  PS.toggleFocusMode = function () { PS.setFocusMode(!document.body.classList.contains("ps-focus-mode")); };
+
+  /* ---------------- section navigator (Feature B) ---------------- */
+  // The 21 fillable sections, grouped into 7 friendly IMRaD headings. This is the single
+  // ordered model the left navigator uses now and the one-section wizard (Feature C) will
+  // reuse, so a nav click and a wizard step address the same sections.
+  PS.SECTION_NAV = [
+    { group: "Title & Abstract", items: [
+      { f: "studentText.title", label: "Title" },
+      { f: "studentText.coverFinding", label: "Main finding (cover)" },
+      { f: "studentText.abstractBackground", label: "Abstract: background" },
+      { f: "studentText.abstractConclusion", label: "Abstract: conclusion" } ] },
+    { group: "Introduction", items: [
+      { f: "studentText.introductionClinicalProblem", label: "Why the condition matters" },
+      { f: "studentText.introductionWhyReviewNeeded", label: "Why combine studies" } ] },
+    { group: "Methods", items: [
+      { f: "studentText.methodsEligibility", label: "Methods: who you included" } ] },
+    { group: "Results", items: [
+      { f: "figures.prisma.caption", label: "Study-selection (PRISMA) caption" },
+      { f: "figures.forestPlot.caption", label: "Forest plot caption" },
+      { f: "studentText.forestInterpretation", label: "What the forest plot means" },
+      { f: "figures.gradeTable.caption", label: "GRADE table caption" },
+      { f: "studentText.heterogeneityInterpretation", label: "What the heterogeneity means" },
+      { f: "studentText.certaintyInterpretation", label: "What the certainty means" } ] },
+    { group: "Discussion", items: [
+      { f: "studentText.discussionPrincipalFinding", label: "Discussion: main finding" },
+      { f: "studentText.discussionLimitations", label: "Main limitation" },
+      { f: "studentText.discussionConclusion", label: "Balanced conclusion" } ] },
+    { group: "Reflection", items: [
+      { f: "studentText.reflectionLeastConfident", label: "Where you are least sure" } ] },
+    { group: "Disclosures & References", items: [
+      { f: "studentText.registration", label: "Protocol / registration" },
+      { f: "studentText.funding", label: "Funding" },
+      { f: "studentText.coi", label: "Competing interests" },
+      { f: "studentText.references", label: "References" } ] }
+  ];
+  // "Done" = meets the SAME word floor the readiness gate enforces (text+glyph, not colour).
+  // NOTE: this will be upgraded to the substantive gate (Phase 2b) so "done" means understood,
+  // not merely "filled".
+  function navFieldDone(f) {
+    var v = (PS.getField ? PS.getField(f) : "") || "";
+    var n = v.trim() ? v.trim().split(/\s+/).filter(Boolean).length : 0;
+    var floor = (PS.floorFor ? PS.floorFor(f) : 0) || 1;
+    return n >= floor;
+  }
+  PS.buildSectionNav = function () {
+    var panel = document.getElementById("paperNavPanel");
+    if (!panel) return;
+    var total = 0, done = 0, idx = 0;
+    var groups = PS.SECTION_NAV.map(function (g) {
+      var items = g.items.map(function (it) {
+        total++;
+        var ok = navFieldDone(it.f); if (ok) done++;
+        var first = idx === 0; idx++;
+        var state = ok ? "complete" : "to write";
+        return '<li role="none"><button type="button" class="nav-item' + (ok ? " nav-done" : "") + '"' +
+          ' data-nav-field="' + escAttr(it.f) + '" tabindex="' + (first ? "0" : "-1") + '"' +
+          ' aria-label="' + escAttr(it.label + " — " + state) + '">' +
+          '<span class="nav-glyph" aria-hidden="true">' + (ok ? "✓" : "○") + '</span>' +
+          '<span class="nav-label">' + esc(it.label) + '</span></button></li>';
+      }).join("");
+      return '<li class="nav-group"><div class="nav-group-title">' + esc(g.group) + '</div><ul role="list">' + items + '</ul></li>';
+    }).join("");
+    // Default open on desktop, collapsed on phones (a 21-item list on top of a small screen
+    // is itself a wall); preserve the user's open/closed choice across refreshes.
+    var existing = panel.querySelector(".section-nav-wrap");
+    var openAttr = (existing ? existing.open : window.innerWidth > 700) ? " open" : "";
+    panel.innerHTML =
+      '<nav aria-label="Paper sections" class="section-nav">' +
+      '<details' + openAttr + ' class="section-nav-wrap"><summary><span class="nav-h">Sections</span> ' +
+      '<span class="nav-progress">' + done + ' of ' + total + ' done</span></summary>' +
+      '<button type="button" class="nav-skip" data-action="skip-to-writing">Skip to writing →</button>' +
+      '<ul role="list" class="nav-grouplist">' + groups + '</ul></details></nav>';
+  };
+  // Jump to a section: in wizard mode switch to the step that holds it, then focus its box.
+  PS.gotoSection = function (field) {
+    var el = document.querySelector('#paperCanvas [data-field="' + field + '"]');
+    if (!el) return;
+    var step = el.closest(".ps-step");
+    if (step && PS.state.ui && PS.state.ui.view === "wizard") {
+      var steps = Array.prototype.slice.call(document.querySelectorAll("#paperCanvas .ps-step"));
+      var idx = steps.indexOf(step); if (idx >= 0) applyWizard(idx, false);
+    }
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    try { el.focus(); } catch (e) {}
+    var panel = document.getElementById("paperNavPanel");
+    if (panel) panel.querySelectorAll(".nav-item").forEach(function (b) {
+      if (b.dataset.navField === field) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current");
+    });
+  };
+
+  /* ---------------- one-section wizard (Feature C) ---------------- */
+  // After render() flattens the paper into #paperCanvas, group the children into steps cut
+  // at each H2/H3 (only Results has H3s, so it sub-splits there -> ~13 hybrid steps). Show
+  // one step at a time by default for first-time writers; "Show all" is a persisted toggle.
+  function isFirstTimer() { return Object.keys((PS.state && PS.state.studentText) || {}).length === 0; }
+  PS.buildWizard = function () {
+    var canvas = document.getElementById("paperCanvas");
+    if (!canvas) return;
+    // render() just reset innerHTML, so children are flat (no prior steps/bars to unwrap).
+    var nodes = Array.prototype.slice.call(canvas.childNodes);
+    var steps = [], cur = null;
+    nodes.forEach(function (node) {
+      var hdr = node.nodeType === 1 && (node.tagName === "H2" || node.tagName === "H3");
+      if (hdr || !cur) { cur = { title: hdr ? node.textContent.trim() : "Title & overview", nodes: [] }; steps.push(cur); }
+      cur.nodes.push(node);
+    });
+    if (!steps.length) return;
+    var ui = PS.state.ui = PS.state.ui || {};
+    if (ui.view == null) ui.view = isFirstTimer() ? "wizard" : "all";
+    steps.forEach(function (s, i) {
+      var wrap = document.createElement("div");
+      wrap.className = "ps-step"; wrap.setAttribute("role", "group");
+      wrap.dataset.step = i; wrap.setAttribute("aria-label", "Step " + (i + 1) + " of " + steps.length + ": " + s.title);
+      s.nodes.forEach(function (n) { wrap.appendChild(n); });   // relocates the node
+      canvas.appendChild(wrap);
+    });
+    PS._wizardTitles = steps.map(function (s) { return s.title; });
+    canvas.insertBefore(makeWizardBar(false), canvas.firstChild);   // top bar
+    canvas.appendChild(makeWizardBar(true));                        // bottom Back/Next
+    canvas.classList.toggle("ps-show-all", ui.view === "all");
+    applyWizard(Math.min(Math.max(0, ui.step || 0), steps.length - 1), false);
+  };
+  function makeWizardBar(bottom) {
+    var bar = document.createElement("div");
+    bar.className = "ps-wizard-bar no-clean-pdf" + (bottom ? " ps-wizard-bottom" : "");
+    bar.innerHTML =
+      '<div class="ps-wizard-row">' +
+      '<button type="button" class="ps-wiz-btn ps-prev" data-wiz="prev">← Back</button>' +
+      (bottom ? '' : '<div class="ps-wizard-mid"><div class="ps-step-label" aria-live="polite"></div>' +
+        '<div class="ps-progress-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="ps-progress-bar"></span></div></div>') +
+      '<button type="button" class="ps-wiz-btn ps-next" data-wiz="next">Next →</button></div>' +
+      (bottom ? '' : '<button type="button" class="ps-showall" data-wiz="toggle"></button>');
+    return bar;
+  }
+  // Show step i (never hard-locks Next; Back disabled only at step 0). focusHeading=true on
+  // Back/Next so keyboard + screen-reader users land on the new section heading.
+  function applyWizard(i, focusHeading) {
+    var canvas = document.getElementById("paperCanvas"); if (!canvas) return;
+    var steps = canvas.querySelectorAll(".ps-step"); if (!steps.length) return;
+    i = Math.min(Math.max(0, i), steps.length - 1);
+    PS.state.ui = PS.state.ui || {}; PS.state.ui.step = i;
+    steps.forEach(function (s, k) { s.classList.toggle("ps-current", k === i); });
+    // A Plotly plot rendered while its step was hidden has wrong dimensions; fix on reveal.
+    if (window.Plotly) { try { steps[i].querySelectorAll(".js-plotly-plot").forEach(function (gd) { window.Plotly.Plots.resize(gd); }); } catch (e) {} }
+    var total = steps.length, title = (PS._wizardTitles && PS._wizardTitles[i]) || "";
+    var pct = Math.round(((i + 1) / total) * 100);
+    canvas.querySelectorAll(".ps-step-label").forEach(function (l) { l.textContent = "Step " + (i + 1) + " of " + total + " — " + title; });
+    canvas.querySelectorAll(".ps-progress-bar").forEach(function (b) { b.style.width = pct + "%"; });
+    canvas.querySelectorAll(".ps-progress-wrap").forEach(function (w) { w.setAttribute("aria-valuenow", pct); });
+    canvas.querySelectorAll(".ps-prev").forEach(function (b) { b.disabled = (i === 0); });
+    canvas.querySelectorAll(".ps-next").forEach(function (b) { b.textContent = (i === total - 1) ? "Finish ✓" : "Next →"; });
+    var toggle = canvas.querySelector(".ps-showall");
+    if (toggle) toggle.textContent = (PS.state.ui.view === "all") ? "📖 Show one section at a time" : "📋 Show all sections at once";
+    if (focusHeading) {
+      var h = steps[i].querySelector("h1, h2, h3");
+      if (h) { h.setAttribute("tabindex", "-1"); try { h.focus(); } catch (e) {} h.scrollIntoView({ block: "start", behavior: "smooth" }); }
+    }
+    PS.save();
+  }
+  PS.wizardNext = function () { applyWizard((PS.state.ui && PS.state.ui.step || 0) + 1, true); };
+  PS.wizardPrev = function () { applyWizard((PS.state.ui && PS.state.ui.step || 0) - 1, true); };
+  PS.setWizardView = function (view) {
+    var canvas = document.getElementById("paperCanvas"); if (!canvas) return;
+    PS.state.ui = PS.state.ui || {}; PS.state.ui.view = view;
+    canvas.classList.toggle("ps-show-all", view === "all");
+    applyWizard(PS.state.ui.step || 0, false);
+  };
+  PS.toggleWizardView = function () { PS.setWizardView(PS.state.ui && PS.state.ui.view === "all" ? "wizard" : "all"); };
 
   /* ---------------- checklist / readiness ---------------- */
   PS.updateChecklist = function () {
@@ -916,6 +1258,9 @@
       if (c.blockingCount === 0) { dlBtn.textContent = "⬇ Download my paper (PDF)"; dlBtn.classList.remove("locked"); dlBtn.setAttribute("aria-disabled", "false"); }
       else { dlBtn.textContent = "🔒 Download my paper (" + c.blockingCount + " to finish)"; dlBtn.classList.add("locked"); dlBtn.setAttribute("aria-disabled", "true"); }
     }
+    // Refresh the left section navigator's done-states/progress (unless focus is inside it).
+    var np = document.getElementById("paperNavPanel");
+    if (!(np && np.contains(document.activeElement))) PS.buildSectionNav();
   };
 
   PS.showReadinessModal = function (check) {
@@ -998,6 +1343,64 @@
     }
   });
 
+  /* ---------------- worked example (read-only exemplar) ---------------- */
+  // A complete, finished short evidence paper students can read end-to-end. Read-only:
+  // it never touches studentText (copying topic-specific prose into a different study
+  // would be an integrity risk — the per-box "Use this example" starters cover scaffolding).
+  var WORKED_EXAMPLE = [
+    ["Title", ["Finerenone for adults with chronic kidney disease and type 2 diabetes: a short systematic review and meta-analysis."]],
+    ["Abstract — Background", ["Chronic kidney disease in adults with type 2 diabetes is common and tends to worsen over time. Despite standard treatment, many patients still develop heart failure or die from cardiovascular causes, so better options are needed."]],
+    ["Abstract — Objective", ["This short review aimed to assess whether finerenone reduces cardiovascular events compared with placebo in this population."]],
+    ["Abstract — Methods", ["A rapid systematic review and random-effects meta-analysis combined three randomised trials (19,027 participants) for the composite cardiovascular outcome."]],
+    ["Abstract — Results", ["The pooled risk ratio was 0.86 (0.78 to 0.95, 95% CI), I² = 12%. The certainty of evidence (GRADE) was moderate."]],
+    ["Abstract — Conclusion", ["In adults with CKD and type 2 diabetes, finerenone probably reduces cardiovascular events by a modest amount; because certainty is moderate, the exact size of the benefit remains uncertain."]],
+    ["Introduction", [
+      "Chronic kidney disease in adults with type 2 diabetes is common and progressive. Even with standard care, many patients go on to develop heart failure or die from cardiovascular causes, and kidney function keeps declining.",
+      "Finerenone is a non-steroidal mineralocorticoid-receptor antagonist that may reduce cardiovascular and kidney harm. Before this review it was unclear how large and how reliable that benefit was across trials.",
+      "No single trial was large enough to settle the question precisely, so this short paper pools the major trials to ask whether finerenone reduces cardiovascular events."
+    ]],
+    ["Methods", ["We included randomised controlled trials of finerenone versus placebo in adults with CKD and type 2 diabetes that reported cardiovascular events. Treatment effects were summarised using the risk ratio in a random-effects meta-analysis; heterogeneity was quantified with I² and τ², risk of bias with RoB 2, and certainty with GRADE. As a rapid review the search was lighter than a full systematic review, so a relevant study could have been missed."]],
+    ["Results — primary outcome", ["The pooled risk ratio for the composite cardiovascular outcome was 0.86 (0.78 to 0.95, 95% CI) across three trials (19,027 participants). The confidence interval stayed below 1, so a benefit in this direction is statistically supported, and it was fairly narrow, indicating reasonable precision."]],
+    ["Results — heterogeneity", ["Statistical heterogeneity was low (I² = 12%, τ² ≈ 0.004), so the three trials gave broadly consistent results; with only three studies this agreement should be read cautiously rather than as proof."]],
+    ["Results — certainty", ["Certainty of evidence was rated Moderate, downgraded for imprecision because only three trials contributed; the conclusion is therefore worded cautiously rather than definitively."]],
+    ["Discussion", ["Across the pooled trials, finerenone was associated with fewer cardiovascular events than placebo — a modest but consistent benefit. Considering the estimate together with the moderate certainty, this could be worthwhile for high-risk patients, though the exact size is uncertain. A strength is that the review brings the main trials into a single estimate; the main limitation is that few trials contributed and the included patients may differ from everyday practice."]],
+    ["Conclusion", ["In adults with chronic kidney disease and type 2 diabetes, finerenone probably reduces cardiovascular events by a modest amount compared with placebo, although certainty is moderate and the exact size of the benefit remains uncertain. A larger trial focused on advanced kidney disease would help confirm whether the benefit holds in that group."]]
+  ];
+  var exampleOpener = null;
+  function exampleEsc(e) { if (e.key === "Escape") PS.closeWorkedExample(); }
+  PS._buildExampleModal = function () {
+    if (document.getElementById("workedExampleModal")) return;
+    var sections = WORKED_EXAMPLE.map(function (s) {
+      return '<h3>' + esc(s[0]) + '</h3>' + s[1].map(function (p) { return '<p>' + esc(p) + '</p>'; }).join("");
+    }).join("");
+    var wrap = document.createElement("div");
+    wrap.id = "workedExampleModal"; wrap.className = "example-modal"; wrap.hidden = true;
+    wrap.setAttribute("role", "dialog"); wrap.setAttribute("aria-modal", "true");
+    wrap.setAttribute("aria-label", "Worked example paper, read only");
+    wrap.innerHTML =
+      '<div class="example-modal-card" role="document">' +
+        '<div class="example-modal-head"><strong>📄 Worked example — read only</strong>' +
+        '<button id="closeWorkedExample" type="button">Close ✕</button></div>' +
+        '<p class="example-modal-note">This is a finished example to learn from. It does <strong>not</strong> change your paper — read it, then write your own in your own words.</p>' +
+        '<div class="example-modal-body">' + sections + '</div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    wrap.addEventListener("click", function (e) { if (e.target === wrap) PS.closeWorkedExample(); });
+    document.getElementById("closeWorkedExample").addEventListener("click", PS.closeWorkedExample);
+  };
+  PS.showWorkedExample = function () {
+    PS._buildExampleModal();
+    exampleOpener = document.activeElement;
+    var m = document.getElementById("workedExampleModal");
+    if (m) { m.hidden = false; document.addEventListener("keydown", exampleEsc); }
+    var c = document.getElementById("closeWorkedExample"); if (c) try { c.focus(); } catch (e) {}
+  };
+  PS.closeWorkedExample = function () {
+    var m = document.getElementById("workedExampleModal"); if (m) m.hidden = true;
+    document.removeEventListener("keydown", exampleEsc);
+    if (exampleOpener && exampleOpener.focus) try { exampleOpener.focus(); } catch (e) {}
+  };
+
   /* ---------------- boot / show ---------------- */
   var wired = false;
   // Wire the persistent toolbar + canvas listeners EXACTLY ONCE. The toolbar
@@ -1020,6 +1423,8 @@
       PS.render(); PS.embedFigures(); PS.toast("Start-here guide reopened.");
       var c = document.querySelector("#paperCanvas .onboard-card"); if (c) c.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+    on("btnFocusMode", function () { PS.toggleFocusMode(); });
+    on("btnWorkedExample", function () { PS.showWorkedExample(); });
     on("btnRefreshFigures", function () { PS.embedFigures(true); PS.toast("Refreshing figures from the analysis…"); });
     on("btnDownloadWorkingPdf", function () { PS.downloadPaperPdf({ clean: false }); });
     on("btnDownloadCleanPdf", function () { PS.downloadPaperPdf({ clean: true }); });
@@ -1044,10 +1449,71 @@
     on("btnClearAll", PS.clearAll);
     // Tutor-copy button lives in the re-rendered sidebar → delegate on document.
     document.addEventListener("click", function (e) { if (e.target.closest("#btnTutorCopy")) PS.downloadPaperPdf({ clean: false }); });
+    // Esc exits focus mode and returns focus to the toggle (a11y: never trap the user).
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && document.body.classList.contains("ps-focus-mode")) {
+        PS.setFocusMode(false);
+        var fb = document.getElementById("btnFocusMode"); if (fb) try { fb.focus(); } catch (ex) {}
+      }
+    });
     on("btnDownloadJson", PS.downloadJson);
     var up = document.getElementById("paperJsonInput");
     on("btnUploadJson", function () { if (up) up.click(); });
     if (up) up.addEventListener("change", function () { if (up.files && up.files[0]) PS.uploadJson(up.files[0]); up.value = ""; });
+
+    // ---- anchor the position:fixed toolbar menus under their button ----
+    // The menus are position:fixed (so they escape #tab-paper's overflow:auto and never
+    // clip), but the host's global header + tab-strip push the sticky toolbar down ~230px,
+    // so the CSS's hardcoded top:54px floated them to the screen's top-left corner,
+    // detached from their button. Position them live from the summary rect instead.
+    (function () {
+      var menus = [
+        { d: document.querySelector(".toolbar-more"), b: document.querySelector(".toolbar-more-body"), side: "left" },
+        { d: document.querySelector(".download-menu"), b: document.querySelector(".download-menu-body"), side: "right" }
+      ].filter(function (m) { return m.d && m.b; });
+      function clearPos(b) { b.style.top = b.style.left = b.style.right = b.style.maxHeight = ""; }
+      function anchor(m) {
+        // Closed, or phone bottom-sheet (<=640px media query): let the CSS own it.
+        if (!m.d.open || window.innerWidth <= 640) { clearPos(m.b); return; }
+        var r = m.d.querySelector("summary").getBoundingClientRect();
+        m.b.style.top = Math.round(r.bottom + 4) + "px";
+        m.b.style.maxHeight = "calc(100vh - " + Math.round(r.bottom + 28) + "px)";
+        if (m.side === "right") { m.b.style.left = "auto"; m.b.style.right = Math.max(8, Math.round(window.innerWidth - r.right)) + "px"; }
+        else { m.b.style.right = "auto"; m.b.style.left = Math.max(8, Math.round(r.left)) + "px"; }
+      }
+      menus.forEach(function (m) {
+        m.d.addEventListener("toggle", function () {
+          anchor(m);
+          // Never let both menus sit open and overlap.
+          if (m.d.open) menus.forEach(function (o) { if (o !== m && o.d.open) o.d.removeAttribute("open"); });
+        });
+      });
+      function repositionOpen() { menus.forEach(function (m) { if (m.d.open) anchor(m); }); }
+      var scroller = document.getElementById("tab-paper");
+      if (scroller) scroller.addEventListener("scroll", repositionOpen, { passive: true });
+      window.addEventListener("resize", repositionOpen);
+    })();
+
+    // ---- left section navigator: click + roving-tabindex keyboard nav (Feature B) ----
+    var navPanel = document.getElementById("paperNavPanel");
+    if (navPanel) {
+      navPanel.addEventListener("click", function (e) {
+        if (e.target.closest('[data-action="skip-to-writing"]')) { e.preventDefault(); PS.gotoSection(PS.SECTION_NAV[0].items[0].f); return; }
+        var item = e.target.closest(".nav-item");
+        if (item) { e.preventDefault(); PS.gotoSection(item.dataset.navField); }
+      });
+      // Arrow / Home / End move focus among items; only one item is in the tab order.
+      navPanel.addEventListener("keydown", function (e) {
+        var item = e.target.closest(".nav-item"); if (!item) return;
+        var items = Array.prototype.slice.call(navPanel.querySelectorAll(".nav-item"));
+        var i = items.indexOf(item), n = null;
+        if (e.key === "ArrowDown") n = items[Math.min(items.length - 1, i + 1)];
+        else if (e.key === "ArrowUp") n = items[Math.max(0, i - 1)];
+        else if (e.key === "Home") n = items[0];
+        else if (e.key === "End") n = items[items.length - 1];
+        if (n) { e.preventDefault(); items.forEach(function (b) { b.tabIndex = -1; }); n.tabIndex = 0; n.focus(); }
+      });
+    }
 
     var canvas = document.getElementById("paperCanvas");
     if (canvas) {
@@ -1057,6 +1523,10 @@
         setNested(PS.state, el.dataset.field, el.innerText.trim());
         scheduleAutosave();
         if (el.hasAttribute("data-floor")) PS.updateWordCounts();
+        // Hide this field's "Use this example" button once it has content (show again if cleared).
+        var ueb = document.querySelector('#paperCanvas .use-example[data-target="' + el.dataset.field + '"]');
+        if (ueb) ueb.toggleAttribute("hidden", !!el.innerText.trim());
+        if (el.dataset.field === "studentText.protocolLink") PS.updateProtocolLink();
         clearTimeout(chkTimer);
         chkTimer = setTimeout(PS.updateChecklist, 600);
       });
@@ -1067,11 +1537,33 @@
       });
       // Delegated actions inside the (re-rendered) canvas — bind once on the stable parent.
       canvas.addEventListener("click", function (e) {
+        var wiz = e.target.closest("[data-wiz]");
+        if (wiz) {
+          e.preventDefault();
+          if (wiz.dataset.wiz === "next") PS.wizardNext();
+          else if (wiz.dataset.wiz === "prev") PS.wizardPrev();
+          else if (wiz.dataset.wiz === "toggle") PS.toggleWizardView();
+          return;
+        }
         var figBtn = e.target.closest("[data-figaction]");
         if (figBtn) { e.preventDefault(); PS.applyFigRange(figBtn.dataset.figid, figBtn.dataset.figaction === "reset"); return; }
         var act = e.target.closest("[data-action]");
         if (!act) return;
         if (act.dataset.action === "build-refs") { e.preventDefault(); PS.buildReferences(); }
+        else if (act.dataset.action === "use-example") {
+          e.preventDefault();
+          var target = act.dataset.target, starter = act.dataset.starter || "";
+          var boxEl = document.querySelector('#paperCanvas [data-field="' + target + '"]');
+          if (boxEl) {
+            boxEl.innerText = starter;
+            setNested(PS.state, target, starter);
+            act.setAttribute("hidden", "");
+            if (boxEl.hasAttribute("data-floor")) PS.updateWordCounts();
+            PS.save(); PS.updateChecklist();
+            try { boxEl.focus(); } catch (e2) {}
+            PS.toast("Example added — now edit it to fit your study.");
+          }
+        }
         else if (act.dataset.action === "add-outcome") { e.preventDefault(); PS.addOutcome(); }
         else if (act.dataset.action === "remove-outcome") { e.preventDefault(); PS.removeOutcome(act.dataset.id); }
         else if (act.dataset.action === "dismiss-onboard") {
@@ -1087,6 +1579,15 @@
   // restore, or keyboard nav — and safe if those fire together.
   PS.onShow = function () {
     if (!booted) { PS.restore(); booted = true; }
+    PS.hookLiveUpdate();
+    // Compute the analysis BEFORE autofill so the numbers (effect, CI, I², GRADE) populate too,
+    // not just the plots — without needing the Analysis tab visit or the extraction tick.
+    PS.ensureAnalysisReady();
+    if (!(window.RapidMeta && RapidMeta.state && RapidMeta.state.results)) {
+      PS.__selfRun = true;
+      try { if (window.AnalysisEngine && AnalysisEngine.run) AnalysisEngine.run(); } catch (e) {}
+      PS.__selfRun = false;
+    }
     PS.loadRapidMetaData();
     seedDemoOutcomes();     // demo only: illustrative secondary outcomes
     PS.render();            // re-render canvas content
@@ -1096,6 +1597,7 @@
     var tipsOff = false; try { tipsOff = localStorage.getItem("rapidmeta.paperTips") === "off"; } catch (e) {}
     document.body.classList.toggle("tips-hidden", tipsOff);
     var tb = document.getElementById("btnToggleTips"); if (tb) tb.textContent = tipsOff ? "Show examples & notes" : "Hide examples & notes";
+    PS.hookLiveUpdate();   // refresh figures if the host analysis is re-run while open
     PS.embedFigures();
     PS.updateChecklist();
     PS.updateWordCounts();
