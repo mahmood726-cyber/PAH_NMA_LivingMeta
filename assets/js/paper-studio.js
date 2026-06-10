@@ -572,6 +572,11 @@
       "These findings appear broadly consistent with what other reviews and guidelines report, although direct comparison is limited by differences in the patients and outcomes studied.");
     html += example("These results agree with the direction of the individual trial reports and current guideline signals for this drug class.",
       "Other studies found similar things.");
+    html += box("studentText.discussionTransportability", "Who the result applies to (generalisability / transportability)", "The pooled effect applies most directly to patients like those in the trials... In a real-world population that is more/less... the effect might be...", "~2-3 sentences",
+      "Use the Transportability panel in the Analysis tab. First say how representative the trials are of the real-world patients you care about (the representativeness map: age, sex, BMI, diabetes, etc.). Then, IF you set an effect-modifier slope, report the transported estimate as a SENSITIVITY analysis — never as the primary real-world effect. Be explicit that without individual patient data this is an external-validity check, not a definitive real-world number.",
+      "The pooled effect applies most directly to patients similar to those enrolled in the trials. The representativeness map shows the trials were broadly similar to the target population on age, sex and BMI, but under-represented people with diabetes. As a labelled sensitivity analysis, transporting the effect to a more diabetic real-world population shifted it modestly in the expected direction; because this rests on aggregate (not individual-patient) data, it is an external-validity check rather than a definitive real-world estimate.");
+    html += example("The trials were reasonably representative of the target population on age, sex and BMI but enrolled fewer people with diabetes; a labelled transportability sensitivity analysis shifted the pooled effect by only a small amount toward a more diabetic population, so the headline result is likely to generalise, with that caveat.",
+      "The result applies to everyone.");
     html += box("studentText.discussionStrengths", "Strengths", "A strength of this review is...", "1-2 sentences",
       "What did this review do well — e.g. combining all major trials, large total sample, consistent results?",
       "A strength of this review is that it brings together the main available trials into a single estimate, giving a clearer overall picture than any one study alone.");
@@ -1081,6 +1086,7 @@
       { f: "studentText.certaintyInterpretation", label: "What the certainty means" } ] },
     { group: "Discussion", items: [
       { f: "studentText.discussionPrincipalFinding", label: "Discussion: main finding" },
+      { f: "studentText.discussionTransportability", label: "Who the result applies to" },
       { f: "studentText.discussionLimitations", label: "Main limitation" },
       { f: "studentText.discussionConclusion", label: "Balanced conclusion" } ] },
     { group: "Reflection", items: [
