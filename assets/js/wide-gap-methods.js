@@ -306,9 +306,43 @@
     }
   };
 
-  var WideGap = { CNMA: CNMA, RegPubBias: RegPubBias, BenefitRisk: BenefitRisk, TSAPipeline: TSAPipeline, NMALeague: NMALeague, GradeEtD: GradeEtD,
-    renderAll: function () { [CNMA, RegPubBias, BenefitRisk, TSAPipeline, NMALeague, GradeEtD].forEach(function (m) { try { m.render(); } catch (e) {} }); } };
+  // ============================================================ 7. Related reviews (interlink)
+  // Turns standalone dashboards into a navigable evidence network: links sibling
+  // reviews on the same condition. Reads window.RM_RELATED (stamped per dashboard)
+  // OR RapidMeta.state.relatedReviews. Inert when none. Renders once (static links),
+  // independent of the analysis cycle.
+  var RelatedReviews = {
+    list: function () {
+      var r = window.RM_RELATED || (window.RapidMeta && window.RapidMeta.state && window.RapidMeta.state.relatedReviews);
+      return Array.isArray(r) ? r.filter(function (x) { return x && x.url; }) : [];
+    },
+    rendered: false,
+    render: function () {
+      if (this.rendered) return;
+      var sec = document.getElementById('related-reviews-section'), c = document.getElementById('related-reviews-container');
+      if (!sec || !c) return;
+      var items = this.list();
+      if (items.length === 0) { sec.classList.add('hidden'); return; }
+      this.rendered = true;
+      sec.classList.remove('hidden');
+      var cards = items.slice(0, 12).map(function (x) {
+        var label = esc(x.title || x.drug || x.url);
+        return '<a href="' + esc(x.url) + '" class="block px-3 py-2 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-sky-500/50 hover:bg-slate-900 transition-all text-[11px]" title="' + esc(x.condition || '') + '">' +
+          '<span class="text-sky-300 font-semibold">' + esc(x.drug || label) + '</span>' + (x.title && x.drug && x.title !== x.drug ? '<span class="opacity-60"> &middot; ' + esc(String(x.title).replace(/^RapidMeta[^|]*\|\s*/, '').slice(0, 48)) + '</span>' : '') + '</a>';
+      }).join('');
+      c.innerHTML =
+        '<span class="text-[9px] uppercase tracking-widest px-3 py-1 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30">Related reviews &middot; same condition &middot; interlinked evidence network</span>' +
+        '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-3">' + cards + '</div>' +
+        '<div class="mt-2 text-[9px] opacity-60">Sibling reviews on the same condition from the RapidMeta / LivingMeta portfolio. Links are relative; open in the same Pages site. Generated from the portfolio reviews-index.</div>';
+    }
+  };
+
+  var WideGap = { CNMA: CNMA, RegPubBias: RegPubBias, BenefitRisk: BenefitRisk, TSAPipeline: TSAPipeline, NMALeague: NMALeague, GradeEtD: GradeEtD, RelatedReviews: RelatedReviews,
+    renderAll: function () { [CNMA, RegPubBias, BenefitRisk, TSAPipeline, NMALeague, GradeEtD, RelatedReviews].forEach(function (m) { try { m.render(); } catch (e) {} }); } };
   window.WideGapMethods = WideGap;
+  // Related reviews don't depend on analysis — render on DOM ready too.
+  if (document.readyState !== 'loading') { try { RelatedReviews.render(); } catch (e) {} }
+  else document.addEventListener('DOMContentLoaded', function () { try { RelatedReviews.render(); } catch (e) {} });
 
   function installHook() {
     if (window.__wideGapHooked) return true;
