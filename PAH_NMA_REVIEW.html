@@ -2672,6 +2672,8 @@
 
                     <div class="stat-chip stat-chip-blue" id="chip-egger"><i class="fa-solid fa-chart-line" style="font-size:10px"></i> Egger's: --</div>
 
+                    <div class="stat-chip stat-chip-blue hidden" id="chip-registry-pubbias" title="Registry-aware publication bias: when a posted-but-unpublished 'ghost' trial is observed, the missing-evidence contribution is MEASURED directly, disambiguating true suppression from look-alike funnel asymmetry (so a trim-fill correction is not invoked spuriously). Appears only when registry ghost-trial data is supplied."><i class="fa-solid fa-ghost" style="font-size:10px"></i> Registry bias: --</div>
+
                     <div class="stat-chip stat-chip-blue" id="chip-robme" title="Cochrane Ch.13 ROB-ME: per-MA risk of missing evidence (Q1 search, Q2 missing trials, Q3 selective reporting, Q4 small-study effects)."><i class="fa-solid fa-eye-slash" style="font-size:10px"></i> ROB-ME: --</div>
 
 
@@ -2865,6 +2867,42 @@
 
 
                             <div id="pseudo-ipd-container"></div>
+
+
+                        </div>
+
+
+                        <div id="cnma-section" class="mt-8 px-2 hidden">
+
+
+                            <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+
+
+                                <i class="fa-solid fa-puzzle-piece text-indigo-400"></i> Component NMA (receptor / component decomposition)
+
+
+                            </h3>
+
+
+                            <div id="cnma-container"></div>
+
+
+                        </div>
+
+
+                        <div id="benefitrisk-section" class="mt-8 px-2 hidden">
+
+
+                            <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+
+
+                                <i class="fa-solid fa-scale-balanced text-cyan-400"></i> Benefit-Risk Frontier (efficacy vs adverse events)
+
+
+                            </h3>
+
+
+                            <div id="benefitrisk-container"></div>
 
 
                         </div>
@@ -44198,6 +44236,7 @@ except ImportError:
 <script src="assets/js/paper-export.js" defer></script>
 <script src="assets/js/paper-studio.js" defer></script>
 <script src="assets/js/pseudo-ipd.js" defer></script>
+<script src="assets/js/wide-gap-methods.js" defer></script>
 
 </body>
 
