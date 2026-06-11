@@ -397,15 +397,30 @@
   function firstDigit(x) { if (x == null || !isFinite(x) || x === 0) return null; x = Math.abs(x); while (x < 1) x *= 10; while (x >= 10) x /= 10; return Math.floor(x); }
   function benfordExp() { var p = []; for (var d = 1; d <= 9; d++) p.push(Math.log10(1 + 1 / d)); return p; }
   var Benford = {
+    // ONE coherent value stream only. Benford's law applies to counts that span
+    // several orders of magnitude (sample sizes, event counts) — NOT to effect
+    // sizes, odds ratios, weights, or proportions (bounded / clustered near 1),
+    // which would manufacture false (non)conformity. We therefore screen the
+    // per-arm participant + event COUNTS only (tN,cN,tE,cE), or an explicit
+    // state.benfordValues stream the host provides. Field used is named in the UI.
+    field: 'per-arm participant & event counts (N, events)',
     values: function () {
+      if (window.RapidMeta && Array.isArray(window.RapidMeta.state.benfordValues)) {
+        // host-supplied single stream takes precedence; label it generically
+        var ov = window.RapidMeta.state.benfordValues.map(num).filter(function (n) { return n !== null && n !== 0; });
+        if (ov.length) { this.field = 'host-supplied values'; return ov; }
+      }
       var r = window.RapidMeta && window.RapidMeta.state && window.RapidMeta.state.results;
       var out = [];
-      if (r && Array.isArray(r.plotData)) r.plotData.forEach(function (d) { [d.effect, d.or, d.md, d.weight, d.w_random, d.tE, d.cE, d.tN, d.cN].forEach(function (v) { var n = num(v); if (n !== null && n !== 0) out.push(n); }); });
-      if (window.RapidMeta && Array.isArray(window.RapidMeta.state.benfordValues)) window.RapidMeta.state.benfordValues.forEach(function (v) { var n = num(v); if (n !== null && n !== 0) out.push(n); });
+      if (r && Array.isArray(r.plotData)) r.plotData.forEach(function (d) {
+        // counts only — homogeneous, multi-order-of-magnitude quantities
+        [d.tN, d.cN, d.tE, d.cE].forEach(function (v) { var n = num(v); if (n !== null && n > 0) out.push(n); });
+      });
+      this.field = 'per-arm participant & event counts (N, events)';
       return out;
     },
     has: function () {
-      var obs = {}, n = 0;
+      var n = 0;
       this.values().forEach(function (v) { var d = firstDigit(v); if (d >= 1 && d <= 9) n++; });
       return n >= 30;
     },
@@ -431,7 +446,7 @@
         '<span class="text-[9px] uppercase tracking-widest px-3 py-1 rounded-full bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30">Benford first-digit forensics &middot; data-integrity screen</span>' +
         '<div class="flex flex-wrap gap-4 mt-3 text-[11px]"><div>n=' + n + ' values</div><div>MAD=' + mad.toFixed(4) + ' &rarr; <b class="' + vcol + '">' + verdict + '</b></div><div>&chi;&sup2;(8)=' + chi.toFixed(1) + '</div></div>' +
         '<div class="overflow-x-auto mt-3"><table class="w-full text-left text-[10px]"><thead class="bg-slate-950/60 text-[9px] uppercase opacity-60"><tr><th class="p-1">Digit</th><th class="p-1 text-right">Observed</th><th class="p-1 text-right">Benford</th><th class="p-1">Observed</th></tr></thead><tbody>' + bars + '</tbody></table></div>' +
-        '<div class="mt-2 text-[9px] opacity-60">First-digit distribution of the analysis values vs Benford&rsquo;s law (Nigrini MAD bands). A screen for data irregularities, NOT proof of fraud &mdash; nonconformity has many benign causes (bounded ranges, few orders of magnitude). Ported from benfordma.</div>';
+        '<div class="mt-2 text-[9px] opacity-60">First-digit distribution of <b>' + esc(this.field) + '</b> vs Benford&rsquo;s law (Nigrini MAD bands). Restricted to ONE homogeneous, multi-order-of-magnitude value stream (counts) &mdash; effect sizes/ORs/weights are deliberately excluded because they violate Benford&rsquo;s assumptions. A screen for data irregularities, NOT proof of fraud; nonconformity has many benign causes. Ported from benfordma.</div>';
     }
   };
 
