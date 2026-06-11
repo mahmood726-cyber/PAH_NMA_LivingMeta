@@ -195,8 +195,119 @@
     }
   };
 
-  var WideGap = { CNMA: CNMA, RegPubBias: RegPubBias, BenefitRisk: BenefitRisk, TSAPipeline: TSAPipeline,
-    renderAll: function () { [CNMA, RegPubBias, BenefitRisk, TSAPipeline].forEach(function (m) { try { m.render(); } catch (e) {} }); } };
+  // ============================================================ 5. NMA league + per-comparison certainty
+  // Computable GRADE/CINeMA-style certainty per pairwise contrast in a placebo-anchored (star) network.
+  // Exposes what a naked SUCRA ranking hides: the highest-RANKED agents can have the WEAKEST evidence (k=1).
+  var NMALeague = {
+    // nodes from RapidMeta.state.leagueNodes = [{name, effect, lo, hi, k}] (effect higher=better),
+    // OR derive from trials carrying data.nmaNode {name, effect, lo, hi}.
+    nodes: function () {
+      var RM = window.RapidMeta;
+      if (RM && RM.state && Array.isArray(RM.state.leagueNodes) && RM.state.leagueNodes.length >= 2) {
+        return RM.state.leagueNodes.map(function (n) { return { name: n.name, e: num(n.effect), lo: num(n.lo), hi: num(n.hi), k: num(n.k) }; })
+          .filter(function (n) { return n.e !== null; });
+      }
+      var by = {};
+      trialsInc().forEach(function (t) {
+        var nd = t.data.nmaNode;
+        if (!nd || num(nd.effect) === null) return;
+        var key = nd.name || t.name;
+        if (!by[key]) by[key] = { name: key, e: num(nd.effect), lo: num(nd.lo), hi: num(nd.hi), k: 0 };
+        by[key].k += 1;
+      });
+      return Object.keys(by).map(function (k) { return by[k]; });
+    },
+    has: function () { return this.nodes().length >= 2; },
+    // certainty rule (ported from nma_league.py): baseline indirect(-1) + crosses-null(-1) + k=1(-1)
+    cellCertainty: function (ki, kj, crossesNull) {
+      var down = 1, notes = ['indirect (star; no incoherence check)'];
+      if (crossesNull) { down += 1; notes.push('imprecision: CrI crosses null'); }
+      if (ki === 1 || kj === 1) { down += 1; notes.push('k=1 node INSUFFICIENT'); }
+      return { level: ['High', 'Moderate', 'Low', 'Very low'][Math.min(down, 3)], note: notes.join('; ') };
+    },
+    render: function () {
+      var sec = document.getElementById('nmaleague-section'), c = document.getElementById('nmaleague-container');
+      if (!sec || !c) return;
+      if (!this.has()) { sec.classList.add('hidden'); return; }
+      sec.classList.remove('hidden');
+      var ns = this.nodes().slice().sort(function (a, b) { return b.e - a.e; });  // best first
+      var cdist = { High: 0, Moderate: 0, Low: 0, 'Very low': 0 };
+      var rows = ns.map(function (ni, ia) {
+        var cells = ns.map(function (nj, ib) {
+          if (ia === ib) return '<td class="p-2 font-mono text-center text-slate-500">' + (ni.e != null ? ni.e.toFixed(1) : '--') + '<br><span class="text-[8px]">k=' + (ni.k != null ? ni.k : '?') + '</span></td>';
+          var diff = ni.e - nj.e;
+          // contrast CrI via independent-marginal combine (conservative; matches glp1 fallback)
+          var se_i = (ni.hi != null && ni.lo != null) ? (ni.hi - ni.lo) / (2 * Z) : null;
+          var se_j = (nj.hi != null && nj.lo != null) ? (nj.hi - nj.lo) / (2 * Z) : null;
+          var crosses = false, criTxt = '';
+          if (se_i != null && se_j != null) {
+            var se = Math.sqrt(se_i * se_i + se_j * se_j);
+            var lo = diff - Z * se, hi = diff + Z * se;
+            crosses = lo < 0 && 0 < hi;
+            criTxt = '<br><span class="text-[8px] opacity-60">[' + lo.toFixed(1) + ', ' + hi.toFixed(1) + ']</span>';
+          } else { crosses = true; }
+          var cert = NMALeague.cellCertainty(ni.k === null ? 2 : ni.k, nj.k === null ? 2 : nj.k, crosses);
+          if (ib > ia) { cdist[cert.level] = (cdist[cert.level] || 0) + 1; }  // count upper triangle once
+          var col = { High: 'text-emerald-300', Moderate: 'text-teal-300', Low: 'text-amber-300', 'Very low': 'text-rose-300' }[cert.level];
+          if (ib > ia) return '<td class="p-2 text-center text-[10px] ' + col + '" title="' + esc(cert.note) + '">' + esc(cert.level) + '</td>';
+          return '<td class="p-2 font-mono text-center text-[10px]' + (diff >= 0 ? ' text-teal-300' : ' text-slate-400') + '">' + (diff >= 0 ? '+' : '') + diff.toFixed(1) + criTxt + '</td>';
+        }).join('');
+        return '<tr class="border-b border-slate-800/60"><td class="p-2 font-semibold whitespace-nowrap">' + esc(ni.name) + (ni.k === 1 ? ' <span class="text-[8px] text-rose-300">k=1</span>' : '') + '</td>' + cells + '</tr>';
+      }).join('');
+      var head = '<th class="p-2"></th>' + ns.map(function (n) { return '<th class="p-2 text-[9px] uppercase">' + esc(String(n.name).slice(0, 10)) + '</th>'; }).join('');
+      // headline: is the top-ranked node also the weakest-evidence?
+      var topWeak = ns[0] && ns[0].k === 1;
+      c.innerHTML =
+        '<span class="text-[9px] uppercase tracking-widest px-3 py-1 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30">League + per-comparison certainty &middot; lower=effect, upper=GRADE/CINeMA certainty</span>' +
+        (topWeak ? '<div class="mt-2 text-[10px] text-amber-300/90"><b>Certainty caveat:</b> the highest-<i>ranked</i> agent (' + esc(ns[0].name) + ') rests on a <b>single trial (k=1)</b> &mdash; weak evidence a SUCRA ranking alone would hide.</div>' : '') +
+        '<div class="overflow-x-auto mt-3"><table class="w-full text-left text-[11px]"><thead class="bg-slate-950/60 font-bold tracking-widest opacity-60"><tr>' + head + '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div class="mt-2 text-[9px] opacity-60">Per-cell certainty (DRAFT): baseline indirect star-network (&minus;1; no incoherence check) + imprecision if the contrast CrI crosses null (&minus;1) + k=1 node INSUFFICIENT (&minus;1). Distribution: ' +
+        Object.keys(cdist).map(function (k) { return cdist[k] + ' ' + k; }).join(', ') + '. RoB / values are the panel’s. The only certainty a ranking owes a panel is per-comparison, not a single SUCRA number.</div>';
+    }
+  };
+
+  // ============================================================ 6. GRADE Evidence-to-Decision scaffold
+  // Pre-fills the COMPUTABLE EtD criteria (traceable) + flags JUDGEMENT criteria for the panel.
+  // Never autonomous; carries the hard guardrails. Consumes RapidMeta.state.gradeEtD when supplied.
+  var GradeEtD = {
+    has: function () { var RM = window.RapidMeta; return !!(RM && RM.state && RM.state.gradeEtD && RM.state.gradeEtD.comparison); },
+    render: function () {
+      var sec = document.getElementById('grade-etd-section'), c = document.getElementById('grade-etd-container');
+      if (!sec || !c) return;
+      if (!this.has()) { sec.classList.add('hidden'); return; }
+      sec.classList.remove('hidden');
+      var d = window.RapidMeta.state.gradeEtD;
+      var certainty = d.certainty || 'Low';
+      var cc = { High: 'text-emerald-300', Moderate: 'text-teal-300', Low: 'text-amber-300', 'Very low': 'text-rose-300' }[certainty] || 'text-amber-300';
+      // computable criteria pre-filled; judgement criteria flagged PANEL INPUT
+      var criteria = [
+        ['Problem / priority', d.problem || 'PANEL INPUT', d.problem ? 'computed/established' : 'human'],
+        ['Desirable effects', d.desirable || 'PANEL INPUT', d.desirable ? 'data' : 'human'],
+        ['Undesirable effects', d.undesirable || 'PANEL INPUT', d.undesirable ? 'data' : 'human'],
+        ['Certainty of evidence', certainty + (d.certaintyNote ? ' (' + d.certaintyNote + ')' : ''), 'this analysis'],
+        ['Values / preferences', 'PANEL INPUT', 'human'],
+        ['Resources / cost', 'PANEL INPUT', 'human'],
+        ['Equity / acceptability / feasibility', 'PANEL INPUT', 'human']
+      ];
+      var rows = criteria.map(function (r) {
+        var human = r[2] === 'human';
+        return '<tr class="border-b border-slate-800/60"><td class="p-2 font-semibold">' + esc(r[0]) + '</td><td class="p-2 ' + (human ? 'text-amber-300/90' : '') + '">' + esc(r[1]) + '</td><td class="p-2 text-[9px] opacity-60">' + esc(r[2]) + '</td></tr>';
+      }).join('');
+      var draft = (certainty === 'High' || certainty === 'Moderate')
+        ? 'CONDITIONAL recommendation (panel to confirm)' : 'CONDITIONAL (weak) — benefit uncertain at ' + certainty + ' certainty (panel to confirm)';
+      c.innerHTML =
+        '<span class="text-[9px] uppercase tracking-widest px-3 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Evidence-to-Decision scaffold &middot; DRAFT &middot; never autonomous</span>' +
+        '<div class="mt-2 text-[11px]">Question: <b>' + esc(d.comparison) + '</b> &mdash; certainty <b class="' + cc + '">' + esc(certainty) + '</b></div>' +
+        '<div class="overflow-x-auto mt-3"><table class="w-full text-left text-[11px]"><thead class="bg-slate-950/60 text-[9px] uppercase font-bold tracking-widest opacity-60"><tr><th class="p-2">EtD criterion</th><th class="p-2">Judgement</th><th class="p-2">Source</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div class="mt-2 text-[11px] p-3 rounded-2xl bg-slate-900/50 border border-slate-800"><b class="text-amber-300">Draft recommendation:</b> ' + esc(draft) + '.</div>' +
+        '<div class="mt-2 text-[9px] opacity-60 leading-relaxed"><b>Guardrails.</b> Decision-support scaffold, not a guideline: computable criteria are pre-filled and traceable; the panel completes risk-of-bias, values, resources, equity. ' +
+        (d.surrogateBlocked ? 'A surrogate-outcome claim is BLOCKED (the surrogate is not validated for the hard outcome). ' : '') +
+        'k=1 nodes are INSUFFICIENT for a recommendation. Never autonomous &mdash; the panel decides.</div>';
+    }
+  };
+
+  var WideGap = { CNMA: CNMA, RegPubBias: RegPubBias, BenefitRisk: BenefitRisk, TSAPipeline: TSAPipeline, NMALeague: NMALeague, GradeEtD: GradeEtD,
+    renderAll: function () { [CNMA, RegPubBias, BenefitRisk, TSAPipeline, NMALeague, GradeEtD].forEach(function (m) { try { m.render(); } catch (e) {} }); } };
   window.WideGapMethods = WideGap;
 
   function installHook() {
