@@ -1261,7 +1261,9 @@
         '<b>pseudo-IPD, never true IPD</b>; Tier C (HR-only) is refused; the HR is never inverted (only arm labels resolved); ' +
         'any hard-check failure blocks export (badge &ldquo;none&rdquo;). RMST/median are curve-derived (better-behaved under ' +
         'non-proportional hazards) but their external accuracy is not independently validated &mdash; use as a triangulation ' +
-        'input. References: Guyot 2012; Titman 2026; RESOLVE-IPD 2025.</div>';
+        'input. <b>Upgrade path:</b> where a published figure exists, fusing the registry curve anchors with the figure&rsquo;s ' +
+        'number-at-risk table dissolves the censoring-identifiability limit (HR fold-error 1.37&rarr;1.05; registry-ipd FUSION.md). ' +
+        'References: Guyot 2012; Titman 2026; RESOLVE-IPD 2025.</div>';
     }
   };
   window.PseudoIPDEngine = PseudoIPDEngine;

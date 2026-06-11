@@ -337,8 +337,61 @@
     }
   };
 
-  var WideGap = { CNMA: CNMA, RegPubBias: RegPubBias, BenefitRisk: BenefitRisk, TSAPipeline: TSAPipeline, NMALeague: NMALeague, GradeEtD: GradeEtD, RelatedReviews: RelatedReviews,
-    renderAll: function () { [CNMA, RegPubBias, BenefitRisk, TSAPipeline, NMALeague, GradeEtD, RelatedReviews].forEach(function (m) { try { m.render(); } catch (e) {} }); } };
+  // ============================================================ 8. Unified Decision View
+  // Consolidates whatever wide-gap evidence is present into ONE panel-ready summary
+  // (port of glp1 dashboard.py "renders what is present"). Activates when ANY of
+  // GRADE-EtD / league / benefit-risk / CNMA has data; otherwise hidden. Pulls from
+  // the same state the individual panels use — no new computation.
+  var DecisionView = {
+    has: function () {
+      return GradeEtD.has() || NMALeague.has() || BenefitRisk.has() || CNMA.has();
+    },
+    render: function () {
+      var sec = document.getElementById('decision-view-section'), c = document.getElementById('decision-view-container');
+      if (!sec || !c) return;
+      if (!this.has()) { sec.classList.add('hidden'); return; }
+      sec.classList.remove('hidden');
+      var RM = window.RapidMeta, parts = [];
+      // certainty (from GRADE-EtD if supplied)
+      var etd = RM && RM.state && RM.state.gradeEtD;
+      if (etd && etd.comparison) {
+        var cert = etd.certainty || 'Low';
+        var cc = { High: 'text-emerald-300', Moderate: 'text-teal-300', Low: 'text-amber-300', 'Very low': 'text-rose-300' }[cert] || 'text-amber-300';
+        parts.push('<div class="p-3 rounded-2xl bg-slate-900/60 border border-slate-800"><div class="text-[9px] uppercase tracking-widest opacity-60 mb-1">Recommendation</div>' +
+          '<div class="text-[12px]"><b>' + esc(etd.comparison) + '</b></div><div class="text-[11px] mt-1">Certainty <b class="' + cc + '">' + esc(cert) + '</b> &rarr; ' +
+          ((cert === 'High' || cert === 'Moderate') ? 'Conditional recommendation' : 'Conditional (weak) — benefit uncertain') + ' <span class="opacity-60">(panel confirms)</span></div></div>');
+      }
+      // league headline (highest-ranked = weakest-evidence flag)
+      if (NMALeague.has()) {
+        var ns = NMALeague.nodes().slice().sort(function (a, b) { return b.e - a.e; });
+        if (ns[0]) {
+          parts.push('<div class="p-3 rounded-2xl bg-slate-900/60 border border-slate-800"><div class="text-[9px] uppercase tracking-widest opacity-60 mb-1">Top-ranked</div>' +
+            '<div class="text-[12px]"><b>' + esc(ns[0].name) + '</b> (' + (ns[0].e != null ? ns[0].e.toFixed(1) : '?') + ')</div>' +
+            (ns[0].k === 1 ? '<div class="text-[10px] text-amber-300 mt-1">but k=1 &mdash; weakest evidence; a ranking alone would hide this</div>' : '<div class="text-[10px] opacity-60 mt-1">see league table for per-comparison certainty</div>') + '</div>');
+        }
+      }
+      // benefit-risk frontier summary
+      if (BenefitRisk.has()) {
+        var pts = BenefitRisk.points();
+        pts.forEach(function (p) { p.dominated = pts.some(function (q) { return q !== p && q.b >= p.b && q.r <= p.r && (q.b > p.b || q.r < p.r); }); });
+        var dom = pts.filter(function (p) { return p.dominated; }).map(function (p) { return p.name; });
+        parts.push('<div class="p-3 rounded-2xl bg-slate-900/60 border border-slate-800"><div class="text-[9px] uppercase tracking-widest opacity-60 mb-1">Benefit-risk</div>' +
+          '<div class="text-[11px]">' + (pts.length - dom.length) + ' option(s) on the frontier' + (dom.length ? '; <span class="text-rose-300">' + dom.length + ' dominated</span> (' + esc(dom.slice(0, 3).join(', ')) + ')' : '') + '</div></div>');
+      }
+      // CNMA / mechanism
+      if (CNMA.has()) {
+        parts.push('<div class="p-3 rounded-2xl bg-slate-900/60 border border-slate-800"><div class="text-[9px] uppercase tracking-widest opacity-60 mb-1">Mechanism</div>' +
+          '<div class="text-[11px]">Component NMA available &mdash; effect decomposed into components (see panel); enables prediction of un-trialled combinations.</div></div>');
+      }
+      c.innerHTML =
+        '<span class="text-[9px] uppercase tracking-widest px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Decision view &middot; consolidated evidence &middot; DRAFT (panel confirms)</span>' +
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">' + parts.join('') + '</div>' +
+        '<div class="mt-2 text-[9px] opacity-60">One panel-ready summary that renders whatever wide-gap evidence is present (GRADE/EtD, league certainty, benefit-risk, mechanism). Decision-support scaffold, not a guideline; risk-of-bias and values are the panel’s.</div>';
+    }
+  };
+
+  var WideGap = { CNMA: CNMA, RegPubBias: RegPubBias, BenefitRisk: BenefitRisk, TSAPipeline: TSAPipeline, NMALeague: NMALeague, GradeEtD: GradeEtD, RelatedReviews: RelatedReviews, DecisionView: DecisionView,
+    renderAll: function () { [CNMA, RegPubBias, BenefitRisk, TSAPipeline, NMALeague, GradeEtD, RelatedReviews, DecisionView].forEach(function (m) { try { m.render(); } catch (e) {} }); } };
   window.WideGapMethods = WideGap;
   // Related reviews don't depend on analysis — render on DOM ready too.
   if (document.readyState !== 'loading') { try { RelatedReviews.render(); } catch (e) {} }
