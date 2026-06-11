@@ -390,8 +390,136 @@
     }
   };
 
-  var WideGap = { CNMA: CNMA, RegPubBias: RegPubBias, BenefitRisk: BenefitRisk, TSAPipeline: TSAPipeline, NMALeague: NMALeague, GradeEtD: GradeEtD, RelatedReviews: RelatedReviews, DecisionView: DecisionView,
-    renderAll: function () { [CNMA, RegPubBias, BenefitRisk, TSAPipeline, NMALeague, GradeEtD, RelatedReviews, DecisionView].forEach(function (m) { try { m.render(); } catch (e) {} }); } };
+  // ============================================================ 9. Benford digit forensics
+  // First-digit screen of the analysis's own values (effect sizes / weights) — a
+  // data-integrity check on the numbers already present. Activates when >=30 usable
+  // values are available. Ported from benfordma (Nigrini MAD bands).
+  function firstDigit(x) { if (x == null || !isFinite(x) || x === 0) return null; x = Math.abs(x); while (x < 1) x *= 10; while (x >= 10) x /= 10; return Math.floor(x); }
+  function benfordExp() { var p = []; for (var d = 1; d <= 9; d++) p.push(Math.log10(1 + 1 / d)); return p; }
+  var Benford = {
+    values: function () {
+      var r = window.RapidMeta && window.RapidMeta.state && window.RapidMeta.state.results;
+      var out = [];
+      if (r && Array.isArray(r.plotData)) r.plotData.forEach(function (d) { [d.effect, d.or, d.md, d.weight, d.w_random, d.tE, d.cE, d.tN, d.cN].forEach(function (v) { var n = num(v); if (n !== null && n !== 0) out.push(n); }); });
+      if (window.RapidMeta && Array.isArray(window.RapidMeta.state.benfordValues)) window.RapidMeta.state.benfordValues.forEach(function (v) { var n = num(v); if (n !== null && n !== 0) out.push(n); });
+      return out;
+    },
+    has: function () {
+      var obs = {}, n = 0;
+      this.values().forEach(function (v) { var d = firstDigit(v); if (d >= 1 && d <= 9) n++; });
+      return n >= 30;
+    },
+    render: function () {
+      var sec = document.getElementById('benford-section'), c = document.getElementById('benford-container');
+      if (!sec || !c) return;
+      if (!this.has()) { sec.classList.add('hidden'); return; }
+      sec.classList.remove('hidden');
+      var obs = new Array(9).fill(0), n = 0;
+      this.values().forEach(function (v) { var d = firstDigit(v); if (d >= 1 && d <= 9) { obs[d - 1]++; n++; } });
+      var exp = benfordExp(), chi = 0, mad = 0;
+      for (var i = 0; i < 9; i++) { var e = exp[i] * n; chi += (obs[i] - e) * (obs[i] - e) / e; mad += Math.abs(obs[i] / n - exp[i]); }
+      mad /= 9;
+      // Nigrini first-digit MAD bands
+      var verdict = mad < 0.006 ? 'Close conformity' : mad < 0.012 ? 'Acceptable conformity' : mad < 0.015 ? 'Marginal' : 'Nonconformity';
+      var vcol = mad < 0.012 ? 'text-emerald-300' : mad < 0.015 ? 'text-amber-300' : 'text-rose-300';
+      var bars = obs.map(function (o, i) {
+        var op = 100 * o / n, ep = 100 * exp[i];
+        return '<tr class="border-b border-slate-800/60"><td class="p-1 font-mono text-center">' + (i + 1) + '</td><td class="p-1 font-mono text-right">' + op.toFixed(1) + '%</td><td class="p-1 font-mono text-right opacity-60">' + ep.toFixed(1) + '%</td>' +
+          '<td class="p-1"><div class="h-2 rounded bg-sky-500/40" style="width:' + Math.min(100, op * 2.5) + '%"></div></td></tr>';
+      }).join('');
+      c.innerHTML =
+        '<span class="text-[9px] uppercase tracking-widest px-3 py-1 rounded-full bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30">Benford first-digit forensics &middot; data-integrity screen</span>' +
+        '<div class="flex flex-wrap gap-4 mt-3 text-[11px]"><div>n=' + n + ' values</div><div>MAD=' + mad.toFixed(4) + ' &rarr; <b class="' + vcol + '">' + verdict + '</b></div><div>&chi;&sup2;(8)=' + chi.toFixed(1) + '</div></div>' +
+        '<div class="overflow-x-auto mt-3"><table class="w-full text-left text-[10px]"><thead class="bg-slate-950/60 text-[9px] uppercase opacity-60"><tr><th class="p-1">Digit</th><th class="p-1 text-right">Observed</th><th class="p-1 text-right">Benford</th><th class="p-1">Observed</th></tr></thead><tbody>' + bars + '</tbody></table></div>' +
+        '<div class="mt-2 text-[9px] opacity-60">First-digit distribution of the analysis values vs Benford&rsquo;s law (Nigrini MAD bands). A screen for data irregularities, NOT proof of fraud &mdash; nonconformity has many benign causes (bounded ranges, few orders of magnitude). Ported from benfordma.</div>';
+    }
+  };
+
+  // ============================================================ 10. Umbrella CCA overlap
+  // Corrected Covered Area for an umbrella review (reviews x primary studies).
+  // Activates on state.umbrellaMatrix = [[studyIds...], ...] (one array per review).
+  var UmbrellaCCA = {
+    reviews: function () { var m = window.RapidMeta && window.RapidMeta.state && window.RapidMeta.state.umbrellaMatrix; return Array.isArray(m) ? m.filter(function (r) { return Array.isArray(r); }) : []; },
+    has: function () { return this.reviews().length >= 2; },
+    render: function () {
+      var sec = document.getElementById('umbrella-section'), c = document.getElementById('umbrella-container');
+      if (!sec || !c) return;
+      if (!this.has()) { sec.classList.add('hidden'); return; }
+      sec.classList.remove('hidden');
+      var revs = this.reviews(), cc = revs.length;
+      var sets = revs.map(function (r) { var s = {}; r.forEach(function (id) { s[id] = 1; }); return s; });
+      var all = {}; sets.forEach(function (s) { Object.keys(s).forEach(function (id) { all[id] = 1; }); });
+      var rr = Object.keys(all).length, nTotal = 0; sets.forEach(function (s) { nTotal += Object.keys(s).length; });
+      var denom = rr * cc - rr, cca = denom > 0 ? (nTotal - rr) / denom : 0; cca = Math.max(0, Math.min(1, cca));
+      // Pielou/Hennessey groove bands (Pieper 2014)
+      var groove = cca <= 0.05 ? 'Slight' : cca <= 0.10 ? 'Moderate' : cca <= 0.15 ? 'High' : 'Very high';
+      var gcol = cca <= 0.10 ? 'text-emerald-300' : cca <= 0.15 ? 'text-amber-300' : 'text-rose-300';
+      c.innerHTML =
+        '<span class="text-[9px] uppercase tracking-widest px-3 py-1 rounded-full bg-orange-500/15 text-orange-300 border border-orange-500/30">Umbrella overlap &middot; Corrected Covered Area (CCA)</span>' +
+        '<div class="flex flex-wrap gap-5 mt-3 text-[12px]"><div>Reviews: <b>' + cc + '</b></div><div>Unique studies: <b>' + rr + '</b></div><div>Total citations: <b>' + nTotal + '</b></div><div>CCA = <b class="' + gcol + '">' + (cca * 100).toFixed(1) + '%</b> (' + groove + ' overlap)</div></div>' +
+        '<div class="mt-2 text-[9px] opacity-60">CCA = (N &minus; r) / (r&middot;c &minus; r), N=total citations, r=unique studies, c=reviews (Pieper 2014). Groove bands: &le;5% slight, &le;10% moderate, &le;15% high, &gt;15% very high. High overlap means the included reviews share primary studies &mdash; pooling them double-counts evidence. Ported from umbrellareview.</div>';
+    }
+  };
+
+  // ============================================================ 11. GRMA (grey relational MA)
+  // Grey relational meta-analysis robustness companion (validated vs the R engine to 1e-4).
+  // Activates on the analysis effect set (state.results.plotData with logOR/vi) or state.grmaData.
+  function _quantile(s, p) { var a = s.slice().sort(function (x, y) { return x - y; }); var i = p * (a.length - 1), lo = Math.floor(i), h = i - lo; return a[lo] + (a[lo + 1] !== undefined ? h * (a[lo + 1] - a[lo]) : 0); }
+  function grmaPool(yi, vi, zeta) {
+    zeta = zeta || 0.5; var n = yi.length; if (n < 3) return null;
+    var prec = vi.map(function (v) { return Math.min(1 / v, 1e6); });
+    var logprec = prec.map(function (p) { return Math.log(p + 1); });
+    function rmm(x) { var q1 = _quantile(x, 0.05), q9 = _quantile(x, 0.95), rng = q9 - q1; if (rng < 1e-12) rng = 1; return { lo: q1, rng: rng }; }
+    function nv(v, f) { return Math.min(Math.max((v - f.lo) / f.rng, 0), 1); }
+    var fe = rmm(yi), fp = rmm(logprec);
+    var xe = yi.map(function (v) { return nv(v, fe); }), xp = logprec.map(function (v) { return nv(v, fp); });
+    var ay = _quantile(yi, 0.5), ap = Math.max.apply(null, prec);
+    var ae = nv(ay, fe), ap2 = nv(Math.log(ap + 1), fp);
+    var de = xe.map(function (v) { return Math.abs(v - ae); }), dp = xp.map(function (v) { return Math.abs(v - ap2); });
+    var all = de.concat(dp), dmin = Math.min.apply(null, all), dmax = Math.max.apply(null, all);
+    var grade; if (dmax < 1e-15) grade = new Array(n).fill(1);
+    else grade = de.map(function (d, i) { var ge = (dmin + zeta * dmax) / (d + zeta * dmax), gp = (dmin + zeta * dmax) / (dp[i] + zeta * dmax); return (ge + gp) / 2; });
+    var devs = yi.map(function (v) { return Math.abs(v - ay); }); var mady = _quantile(devs, 0.5); if (mady < 1e-12) mady = 1e-12;
+    var tc = 4.685; var raw = grade.map(function (g, i) { var u = Math.abs(yi[i] - ay) / mady; var h = u < tc ? Math.pow(1 - Math.pow(u / tc, 2), 2) : 0; return g * h; });
+    var sw = raw.reduce(function (a, b) { return a + b; }, 0); var w = sw < 1e-15 ? raw.map(function () { return 1 / n; }) : raw.map(function (r) { return r / sw; });
+    return { est: yi.reduce(function (s, y, i) { return s + w[i] * y; }, 0), wMax: Math.max.apply(null, w), w: w };
+  }
+  var GRMA = {
+    data: function () {
+      if (window.RapidMeta && window.RapidMeta.state && Array.isArray(window.RapidMeta.state.grmaData)) {
+        var g = window.RapidMeta.state.grmaData.map(function (d) { return { y: num(d.yi != null ? d.yi : d.logOR), v: num(d.vi) }; }).filter(function (d) { return d.y !== null && d.v !== null && d.v > 0; });
+        return { yi: g.map(function (d) { return d.y; }), vi: g.map(function (d) { return d.v; }) };
+      }
+      var r = window.RapidMeta && window.RapidMeta.state && window.RapidMeta.state.results;
+      if (r && Array.isArray(r.plotData)) {
+        var rows = r.plotData.map(function (d) { return { y: num(d.logOR != null ? d.logOR : d.yi), v: num(d.vi) }; }).filter(function (d) { return d.y !== null && d.v !== null && d.v > 0; });
+        return { yi: rows.map(function (d) { return d.y; }), vi: rows.map(function (d) { return d.v; }) };
+      }
+      return { yi: [], vi: [] };
+    },
+    has: function () { return this.data().yi.length >= 3; },
+    render: function () {
+      var sec = document.getElementById('grma-section'), c = document.getElementById('grma-container');
+      if (!sec || !c) return;
+      if (!this.has()) { sec.classList.add('hidden'); return; }
+      var d = this.data(), g = grmaPool(d.yi, d.vi);
+      if (!g) { sec.classList.add('hidden'); return; }
+      sec.classList.remove('hidden');
+      var r = window.RapidMeta.state.results;
+      var ivEst = num(r && (r.pLogOR != null ? r.pLogOR : r.pOR));
+      var cont = r && r.isContinuous;
+      var show = function (x) { return cont ? x.toFixed(2) : Math.exp(x).toFixed(2); };
+      c.innerHTML =
+        '<span class="text-[9px] uppercase tracking-widest px-3 py-1 rounded-full bg-lime-500/15 text-lime-300 border border-lime-500/30">Grey Relational MA &middot; robustness companion (validated vs R, 1e-4)</span>' +
+        '<div class="flex flex-wrap gap-5 mt-3 text-[12px]"><div>GRMA pooled: <b class="text-lime-300">' + show(g.est) + '</b>' + (cont ? '' : ' (back-transformed)') + '</div>' +
+        (ivEst !== null ? '<div>vs IV/RE pooled: <b>' + show(ivEst) + '</b></div>' : '') +
+        '<div>max weight: <b>' + (100 * g.wMax).toFixed(0) + '%</b> on a single study</div></div>' +
+        '<div class="mt-2 text-[9px] opacity-60">Grey relational MA (non-parametric, outlier-robust): weights each study by its grey relational grade to a robust anchor + a Tukey-bisquare effect guard. A robustness companion to IV/RE pooling &mdash; agreement supports the primary estimate; divergence flags outlier-sensitivity. k&ge;3 required. Ported from grma (R-validated).</div>';
+    }
+  };
+
+  var WideGap = { CNMA: CNMA, RegPubBias: RegPubBias, BenefitRisk: BenefitRisk, TSAPipeline: TSAPipeline, NMALeague: NMALeague, GradeEtD: GradeEtD, RelatedReviews: RelatedReviews, DecisionView: DecisionView, Benford: Benford, UmbrellaCCA: UmbrellaCCA, GRMA: GRMA,
+    renderAll: function () { [CNMA, RegPubBias, BenefitRisk, TSAPipeline, NMALeague, GradeEtD, RelatedReviews, DecisionView, Benford, UmbrellaCCA, GRMA].forEach(function (m) { try { m.render(); } catch (e) {} }); } };
   window.WideGapMethods = WideGap;
   // Related reviews don't depend on analysis — render on DOM ready too.
   if (document.readyState !== 'loading') { try { RelatedReviews.render(); } catch (e) {} }
