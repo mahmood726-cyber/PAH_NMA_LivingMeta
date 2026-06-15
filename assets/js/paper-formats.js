@@ -77,15 +77,59 @@
   // Returns a Promise<Blob> of the figure in the requested format.
   PS.figureBlob = function (figId, format) {
     var f = PS._figs && PS._figs[figId];
-    if (!f || !window.Plotly || !f.box) return Promise.reject(new Error("figure not available"));
+    if (!f || !f.box) return Promise.reject(new Error("figure not available"));
     format = (format || "png").toLowerCase();
-    var W = 1100, H = f.box.layout && f.box.layout.height ? f.box.layout.height * 2 : 700;
+    // Synthēsis figures are bespoke inline SVG (not Plotly graphs): serialise the
+    // SVG directly, or rasterise it through a canvas for PNG/JPG/TIFF.
+    var svg = boxSVG(f.box);
+    if (svg) {
+      if (format === "svg") return Promise.resolve(txtBlob(svg, "image/svg+xml"));
+      if (format === "tiff") return svgToCanvas(svg, 2).then(tiffFromCanvas);
+      return svgToCanvas(svg, 2).then(function (c) { return canvasBlob(c, format); });
+    }
+    if (!window.Plotly) return Promise.reject(new Error("figure not available"));
+    var H = f.box.layout && f.box.layout.height ? f.box.layout.height * 2 : 700;
     if (format === "svg") return window.Plotly.toImage(f.box, { format: "svg", width: 1100, height: H / 2 }).then(function (uri) { return txtBlob(decodeURIComponent(uri.split(",")[1]), "image/svg+xml"); });
     if (format === "tiff") {
       return window.Plotly.toImage(f.box, { format: "png", width: 1100, height: H / 2, scale: 2 }).then(loadCanvas).then(tiffFromCanvas);
     }
     return window.Plotly.toImage(f.box, { format: format === "jpg" ? "jpeg" : format, width: 1100, height: H / 2, scale: 2 }).then(dataURItoBlob);
   };
+  // Extract a figure box's inline <svg> as a standalone string (explicit
+  // width/height from the viewBox, xmlns ensured) — or null if it's not an SVG.
+  function boxSVG(box) {
+    if (!box || !box.querySelector) return null;
+    var svg = box.querySelector("svg");
+    if (!svg) return null;
+    var clone = svg.cloneNode(true);
+    var vb = (clone.getAttribute("viewBox") || "").split(/[\s,]+/);
+    if (vb.length === 4) { clone.setAttribute("width", vb[2]); clone.setAttribute("height", vb[3]); }
+    clone.removeAttribute("style");
+    if (!clone.getAttribute("xmlns")) clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    return new XMLSerializer().serializeToString(clone);
+  }
+  function svgToCanvas(svgStr, scale) {
+    scale = scale || 2;
+    return new Promise(function (res, rej) {
+      var img = new Image();
+      img.onload = function () {
+        var w = img.width || 760, h = img.height || 400;
+        var c = document.createElement("canvas"); c.width = w * scale; c.height = h * scale;
+        var ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.scale(scale, scale); ctx.drawImage(img, 0, 0, w, h); res(c);
+      };
+      img.onerror = rej;
+      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgStr);
+    });
+  }
+  function canvasBlob(c, format) {
+    return new Promise(function (res, rej) {
+      var mime = (format === "jpg" || format === "jpeg") ? "image/jpeg" : "image/png";
+      if (c.toBlob) c.toBlob(function (b) { b ? res(b) : rej(new Error("toBlob failed")); }, mime, 0.95);
+      else res(dataURItoBlob(c.toDataURL(mime)));
+    });
+  }
+  function canvasDataURL(c, format) { return c.toDataURL((format === "jpg" || format === "jpeg") ? "image/jpeg" : "image/png"); }
   // Decode a data: URL to a Blob without fetch() (fetch can't read data: under file://).
   function dataURItoBlob(uri) {
     var parts = uri.split(","), mime = (parts[0].match(/:(.*?);/) || [, "image/png"])[1];
@@ -202,7 +246,10 @@
   function gatherFigImgs(m) {
     var jobs = m.sections.filter(function (s) { return s.fig && PS._figs && PS._figs[s.fig]; });
     return Promise.all(jobs.map(function (s) {
-      return window.Plotly.toImage(PS._figs[s.fig].box, { format: "png", width: 1000, height: (PS._figs[s.fig].box.layout.height || 350), scale: 2 })
+      var box = PS._figs[s.fig].box, svg = boxSVG(box);
+      if (svg) return svgToCanvas(svg, 2).then(function (c) { return { id: s.fig, uri: canvasDataURL(c, "png") }; }).catch(function () { return { id: s.fig, uri: null }; });
+      if (!window.Plotly) return Promise.resolve({ id: s.fig, uri: null });
+      return window.Plotly.toImage(box, { format: "png", width: 1000, height: ((box.layout && box.layout.height) || 350), scale: 2 })
         .then(function (uri) { return { id: s.fig, uri: uri }; }).catch(function () { return { id: s.fig, uri: null }; });
     })).then(function (arr) { var map = {}; arr.forEach(function (o) { if (o.uri) map[o.id] = o.uri; }); return map; });
   }

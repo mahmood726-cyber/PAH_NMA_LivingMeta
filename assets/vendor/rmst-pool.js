@@ -112,7 +112,7 @@
 
     var panel = P.buildCollapsiblePanel({
       id: 'rmst-pool-panel',
-      badge: 'RMST',
+      badge: 'RMST · Experimental',
       summary: summary,
       bodyHtml: buildBody(P, trials, pool, tau),
       storageKey: STORAGE_KEY

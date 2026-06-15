@@ -10,7 +10,7 @@
  *
  * Reports:
  *   - β̂ (dose-response slope on log-OR per log-dose unit)
- *   - SE(β̂), Wald-z, p-value
+ *   - SE(β̂) with Knapp-Hartung small-sample correction, t_{k-2} test, p-value, 95% CI
  *   - Pseudo-R² = 1 − τ²_residual / τ²_total
  *   - Bubble plot SVG (x = log-dose, y = log-OR, bubble area ∝ w_i)
  *
@@ -61,6 +61,21 @@
     return p;
   }
 
+  // Student-t CDF via the regularised incomplete beta — vendored verbatim from the
+  // R-validated allmeta/shared/dta-bivariate.js (used there for Deeks' test). Used
+  // for the dose-response slope's small-sample (Knapp-Hartung) t_{k-2} test.
+  function _lnGamma(x) { var c = [76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, 1.208650973866179e-3, -5.395239384953e-6]; var y = x, t = x + 5.5; t -= (x + 0.5) * Math.log(t); var s = 1.000000000190015; for (var j = 0; j < 6; j++) { y++; s += c[j] / y; } return -t + Math.log(2.5066282746310005 * s / x); }
+  function _betacf(a, b, x) { var F = 1e-300, c = 1, d = 1 - (a + b) * x / (a + 1); if (Math.abs(d) < F) d = F; d = 1 / d; var h = d; for (var m = 1; m <= 300; m++) { var m2 = 2 * m, aa = m * (b - m) * x / ((a - 1 + m2) * (a + m2)); d = 1 + aa * d; if (Math.abs(d) < F) d = F; c = 1 + aa / c; if (Math.abs(c) < F) c = F; d = 1 / d; h *= d * c; aa = -(a + m) * (a + b + m) * x / ((a + m2) * (a + 1 + m2)); d = 1 + aa * d; if (Math.abs(d) < F) d = F; c = 1 + aa / c; if (Math.abs(c) < F) c = F; d = 1 / d; var del = d * c; h *= del; if (Math.abs(del - 1) < 1e-14) break; } return h; }
+  function _betai(a, b, x) { if (x <= 0) return 0; if (x >= 1) return 1; var bt = Math.exp(_lnGamma(a + b) - _lnGamma(a) - _lnGamma(b) + a * Math.log(x) + b * Math.log(1 - x)); return x < (a + 1) / (a + b + 2) ? bt * _betacf(a, b, x) / a : 1 - bt * _betacf(b, a, 1 - x) / b; }
+  function _tcdf(t, df) { var x = df / (df + t * t), ib = 0.5 * _betai(df / 2, 0.5, x); return t >= 0 ? 1 - ib : ib; }
+  // t_{0.975,df} critical value by bisection on _tcdf (exact, no lookup table).
+  function _tCrit975(df) {
+    if (!(df > 0)) return 1.959963984540054;
+    var lo = 0, hi = 1000;
+    for (var i = 0; i < 200; i++) { var m = 0.5 * (lo + hi); if (_tcdf(m, df) < 0.975) lo = m; else hi = m; }
+    return 0.5 * (lo + hi);
+  }
+
   function metaReg(yi, vi, x) {
     const k = yi.length;
     if (k < 3) return null;
@@ -90,11 +105,26 @@
     if (Sxx === 0) return null;
     const beta = Sxy / Sxx;
     const alpha = ybar - beta * xbar;
-    const se_beta = Math.sqrt(1 / Sxx);
-    const z = beta / se_beta;
-    const p = 2 * (1 - normalCDF(Math.abs(z)));
+    const se_beta_model = Math.sqrt(1 / Sxx);
 
-    // Residual τ²
+    // Knapp-Hartung small-sample correction for meta-regression (metafor
+    // rma(..., test="knha")): scale the slope SE by s = sqrt(weighted-RSS/(k−2))
+    // and test against t_{k−2}, NOT z. A z-test on a handful of dose-points is
+    // anticonservative — the same small-k issue corrected across the kit's pools.
+    const dfReg = k - 2;
+    let qStar = 0;   // Σ w_i (y_i − fitted_i)² over the RE-weighted residuals
+    for (let i = 0; i < k; i++) {
+      const fitted = alpha + beta * x[i];
+      qStar += w[i] * Math.pow(yi[i] - fitted, 2);
+    }
+    const s2 = dfReg > 0 ? qStar / dfReg : 1;
+    const se_beta = se_beta_model * Math.sqrt(Math.max(1, s2));  // HKSJ floor at 1
+    const t = beta / se_beta;
+    const p = dfReg > 0 ? 2 * (1 - _tcdf(Math.abs(t), dfReg)) : 1;
+    const tc = _tCrit975(dfReg);
+    const beta_ci_lo = beta - tc * se_beta, beta_ci_hi = beta + tc * se_beta;
+
+    // Residual τ² (DL, for pseudo-R²) using the model-based weights' RSS.
     let rss = 0;
     for (let i = 0; i < k; i++) {
       const fitted = alpha + beta * x[i];
@@ -104,7 +134,8 @@
     const tau2_resid = Math.max(0, (rss - (k - 2)) / c_after);
     const pseudoR2 = tau2_total > 0 ? Math.max(0, 1 - tau2_resid / tau2_total) : 0;
 
-    return { alpha, beta, se_beta, z, p, k, tau2_total, tau2_resid, pseudoR2,
+    return { alpha, beta, se_beta, t, z: t, p, df: dfReg, beta_ci_lo, beta_ci_hi,
+             k, tau2_total, tau2_resid, pseudoR2,
              xbar, ybar, Sxx, weights: w, xbar_orig: xbar };
   }
 
@@ -237,9 +268,10 @@
            + '</div>';
     }
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px;">';
-    html += cell('β̂ (slope)', fmt(mr.beta, 3), 'log-OR per log-' + baseUnit);
-    html += cell('SE(β̂)', fmt(mr.se_beta, 3));
-    html += cell('Wald z', fmt(mr.z, 2), 'p = ' + fmt(mr.p, 3));
+    html += cell('β̂ (slope)', fmt(mr.beta, 3),
+      (mr.beta_ci_lo != null ? '95% CI ' + fmt(mr.beta_ci_lo, 3) + ' to ' + fmt(mr.beta_ci_hi, 3) : 'log-OR per log-' + baseUnit));
+    html += cell('SE(β̂)', fmt(mr.se_beta, 3), 'Knapp-Hartung');
+    html += cell('t (df=' + (mr.df != null ? mr.df : '?') + ')', fmt(mr.t, 2), 'p = ' + fmt(mr.p, 3) + ' · t-test');
     html += cell('Pseudo-R²', fmt(mr.pseudoR2 * 100, 1) + '%', '1 − τ²_resid / τ²_total');
     html += cell('Trials with parsed dose', String(mr.k));
     html += cell('OR per doubling', fmt(orPerDoubling, 2));

@@ -52,7 +52,7 @@
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px;">';
     function cell(label, value, sub) {
       return '<div style="background:#0b1220;border:1px solid #1e293b;border-radius:6px;padding:6px 8px;">'
-           + '<div style="font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">' + label + '</div>'
+           + '<div style="font-size:9.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">' + label + '</div>'
            + '<div style="font-size:13px;color:#f1f5f9;font-weight:700;font-family:JetBrains Mono,monospace;margin-top:2px;">' + value + '</div>'
            + (sub ? '<div style="font-size:10px;color:#94a3b8;margin-top:1px;">' + sub + '</div>' : '')
            + '</div>';
@@ -65,7 +65,7 @@
     // Per-trial NNT table
     html += '<div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">Per-trial risk difference and trial-level NNT (uncorrected):</div>';
     html += '<table style="width:100%;font-size:11px;border-collapse:collapse;">';
-    html += '<thead><tr style="color:#64748b;text-align:left;">'
+    html += '<thead><tr style="color:#94a3b8;text-align:left;">'
           + '<th style="padding:4px 6px;border-bottom:1px solid #1e293b;">Trial</th>'
           + '<th style="padding:4px 6px;border-bottom:1px solid #1e293b;text-align:right;">Tx events / N</th>'
           + '<th style="padding:4px 6px;border-bottom:1px solid #1e293b;text-align:right;">Ctl events / N</th>'
@@ -88,7 +88,7 @@
     });
     html += '</tbody></table>';
 
-    html += '<div style="font-size:10.5px;color:#64748b;margin-top:8px;line-height:1.5;">'
+    html += '<div style="font-size:10.5px;color:#94a3b8;margin-top:8px;line-height:1.5;">'
           + 'Method: NNT = 1 / |pooled RD| where RD pooled via DerSimonian–Laird random effects. '
           + 'NNTB = number needed to treat for one to benefit; NNTH = for one to be harmed. '
           + 'CI computed by inverting the RD 95% CI bounds (Altman 1998). '

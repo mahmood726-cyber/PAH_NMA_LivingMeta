@@ -70,7 +70,7 @@
       html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:10px;">';
       function cell(label, value, sub) {
         return '<div style="background:#0b1220;border:1px solid #1e293b;border-radius:6px;padding:6px 8px;">'
-             + '<div style="font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">' + label + '</div>'
+             + '<div style="font-size:9.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">' + label + '</div>'
              + '<div style="font-size:13px;color:#f1f5f9;font-weight:700;font-family:JetBrains Mono,monospace;margin-top:2px;">' + value + '</div>'
              + (sub ? '<div style="font-size:10px;color:#94a3b8;margin-top:1px;">' + sub + '</div>' : '')
              + '</div>';
@@ -91,7 +91,7 @@
     html += '<div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">'
           + 'Per-trial concordance evidence from CT.gov (via AACT 2026-04-12 snapshot):</div>';
     html += '<div style="overflow-x:auto;"><table style="width:100%;font-size:10.5px;border-collapse:collapse;">';
-    html += '<thead><tr style="color:#64748b;text-align:left;">'
+    html += '<thead><tr style="color:#94a3b8;text-align:left;">'
           + '<th style="padding:4px 6px;border-bottom:1px solid #1e293b;">Trial · NCT</th>'
           + '<th style="padding:4px 6px;border-bottom:1px solid #1e293b;">Start</th>'
           + '<th style="padding:4px 6px;border-bottom:1px solid #1e293b;">First posted</th>'
@@ -110,7 +110,7 @@
         if (f.status_concern) reasons.push('status: ' + f.overall_status);
       }
       html += '<tr style="border-bottom:1px solid #0b1220;' + (flag ? 'background:#1c1410;' : '') + '">'
-            + '<td style="padding:3px 6px;color:#e2e8f0;"><strong>' + (t.name || '?') + '</strong> · <span style="font-family:JetBrains Mono,monospace;color:#64748b;font-size:9.5px;">' + t.nct + '</span></td>'
+            + '<td style="padding:3px 6px;color:#e2e8f0;"><strong>' + (t.name || '?') + '</strong> · <span style="font-family:JetBrains Mono,monospace;color:#94a3b8;font-size:9.5px;">' + t.nct + '</span></td>'
             + '<td style="padding:3px 6px;color:#cbd5e1;font-family:JetBrains Mono,monospace;">' + ((f && f.start_date) || '—') + '</td>'
             + '<td style="padding:3px 6px;color:' + (f && f.retro_registered ? '#fbbf24' : '#cbd5e1') + ';font-family:JetBrains Mono,monospace;">' + ((f && f.first_posted) || '—') + '</td>'
             + '<td style="padding:3px 6px;color:#cbd5e1;font-family:JetBrains Mono,monospace;">' + ((f && f.primary_completion_date) || '—') + '</td>'
@@ -122,7 +122,7 @@
     html += '</tbody></table></div>';
 
     // Footer disclaimer
-    html += '<div style="font-size:10.5px;color:#64748b;margin-top:8px;line-height:1.5;border-top:1px solid #1e293b;padding-top:8px;">'
+    html += '<div style="font-size:10.5px;color:#94a3b8;margin-top:8px;line-height:1.5;border-top:1px solid #1e293b;padding-top:8px;">'
           + '<strong>Method:</strong> "Retro" = first-posted date >1 month after trial start (per AllTrials/FDAAA conventions). '
           + '"Results overdue" = primary_completion >12 months ago, no results posted on CT.gov. '
           + 'All evidence from public AACT 2026-04-12 snapshot; verbatim dates / status shown above. '

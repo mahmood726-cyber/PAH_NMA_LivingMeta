@@ -209,15 +209,25 @@
     // Monte Carlo: rank in each iteration
     const rankSums = tr.map(() => 0);
     const beatCounts = tr.map(() => 0);
+    // Per-treatment rank-frequency matrix (the rankogram) for POTH.
+    const rankCounts = tr.map(() => new Array(J).fill(0));
     for (let it = 0; it < N_MC; it++) {
       const draws = tr.map(x => x.mean + x.se * rnorm());
       // Rank: smaller value = rank 1 (better)
       const indexed = draws.map((v, i) => ({ v, i }));
       indexed.sort((a, b) => betterDirection === 'lower' ? a.v - b.v : b.v - a.v);
-      indexed.forEach((x, rank) => { rankSums[x.i] += (rank + 1); });
+      indexed.forEach((x, rank) => { rankSums[x.i] += (rank + 1); rankCounts[x.i][rank] += 1; });
       // Beat-counts (treatments worse than this one)
       indexed.forEach((x, rank) => { beatCounts[x.i] += (J - 1 - rank); });
     }
+    // POTH (Precision Of Treatment Hierarchy, Wigle 2025): summarises rank
+    // uncertainty into [0,1]. SUCRA alone can crown a "winner" even when ranks
+    // are statistically indistinguishable — POTH<0.5 means the hierarchy is not
+    // informative and no top treatment should be claimed (advanced-stats rule).
+    const rankogram = tr.map((x, i) => ({
+      treatment: x.name, rankProbs: rankCounts[i].map(c => c / N_MC) }));
+    const pothRes = (global.POTH && global.POTH.compute) ? global.POTH.compute(rankogram) : null;
+    const pothOK = pothRes && typeof pothRes.poth === 'number' && pothRes.poth >= 0.5;
 
     const rows = tr.map((x, i) => {
       const meanRank = rankSums[i] / N_MC;
@@ -230,15 +240,28 @@
     // Top-ranked = highest SUCRA
     const sorted = rows.slice().sort((a, b) => b.sucra - a.sucra);
     const top = sorted[0];
-    const summary = scale + ' scale · ' + J + ' treatments · top: ' + top.treatment + ' (SUCRA ' + P.fmt(top.sucra, 1) + '%, MR=' + P.fmt(top.meanRank, 2) + ')';
+    const pothStr = pothRes && typeof pothRes.poth === 'number' ? ' · POTH=' + P.fmt(pothRes.poth, 2) : '';
+    const summary = pothOK
+      ? scale + ' scale · ' + J + ' treatments · top: ' + top.treatment + ' (SUCRA ' + P.fmt(top.sucra, 1) + '%, MR=' + P.fmt(top.meanRank, 2) + ')' + pothStr
+      : scale + ' scale · ' + J + ' treatments · hierarchy non-informative' + pothStr + ' — no top treatment claimed';
 
-    // Build body
+    // Build body. GATE the "Top-ranked" claim on POTH: only assert a winner when
+    // POTH ≥ 0.5; otherwise the ranks are statistically indistinguishable.
     let html = '';
     const dirText = betterDirection === 'higher' ? 'larger value = better (response/remission outcome detected)' : 'smaller value = better (harm/mortality outcome assumed)';
-    html += '<div style="background:#0e2540;border:1px solid #312e81;color:#c4b5fd;padding:8px 10px;border-radius:6px;margin-bottom:10px;font-size:11.5px;">'
-          + '<strong>Top-ranked:</strong> ' + top.treatment + ' — SUCRA ' + P.fmt(top.sucra, 1) + '% (mean rank ' + P.fmt(top.meanRank, 2) + ' of ' + J + '). '
-          + 'Reference: <code>' + reference + '</code>. Scale: <code>' + scale + '</code>. <em>Direction:</em> ' + dirText + '.'
-          + '</div>';
+    if (pothOK || !pothRes) {
+      html += '<div style="background:#0e2540;border:1px solid #312e81;color:#c4b5fd;padding:8px 10px;border-radius:6px;margin-bottom:10px;font-size:11.5px;">'
+            + '<strong>Top-ranked:</strong> ' + top.treatment + ' — SUCRA ' + P.fmt(top.sucra, 1) + '% (mean rank ' + P.fmt(top.meanRank, 2) + ' of ' + J + ')'
+            + (pothRes ? ' · <strong>POTH ' + P.fmt(pothRes.poth, 2) + '</strong> (' + pothRes.verdict + ')' : '') + '. '
+            + 'Reference: <code>' + reference + '</code>. Scale: <code>' + scale + '</code>. <em>Direction:</em> ' + dirText + '.'
+            + '</div>';
+    } else {
+      html += '<div style="background:#3f1d1d;border:1px solid #7f1d1d;color:#fca5a5;padding:8px 10px;border-radius:6px;margin-bottom:10px;font-size:11.5px;">'
+            + '<strong>Hierarchy non-informative (POTH = ' + P.fmt(pothRes.poth, 2) + ').</strong> '
+            + pothRes.verdict + ' — the rankings are too uncertain to name a best treatment (highest SUCRA is ' + top.treatment + ' at ' + P.fmt(top.sucra, 1) + '%, but do not report it as "ranked best"). '
+            + 'Reference: <code>' + reference + '</code>. Scale: <code>' + scale + '</code>. <em>Direction:</em> ' + dirText + '.'
+            + '</div>';
+    }
     html += buildBars(rows, betterDirection);
 
     // Per-treatment table
@@ -270,7 +293,7 @@
           + '<strong>Method:</strong> for each non-reference treatment, pool the trial-level log-OR (or MD) vs reference via DerSimonian-Laird random effects. '
           + 'Then ' + N_MC.toLocaleString() + ' Monte Carlo draws — sample each treatment from N(μ̂, σ̂²), rank, average ⇒ mean rank. '
           + 'SUCRA = (J − mean rank) / (J − 1) × 100 (Salanti J Clin Epidemiol 2011). '
-          + '<strong>Caveats:</strong> per advanced-stats.md / Wigle 2025 — SUCRA alone is unreliable when ranks are uncertain; should be paired with the POTH (Probability of Top-K Hierarchy) ranking-uncertainty index. '
+          + '<strong>Ranking precision (Wigle 2025):</strong> POTH (Precision Of Treatment Hierarchy) is computed from the Monte-Carlo rankogram and shown above. SUCRA alone is unreliable when ranks are uncertain; when POTH &lt; 0.5 the hierarchy is non-informative and this panel suppresses the "top-ranked" claim. '
           + 'Direction defaults to "smaller is better"; for outcomes where larger is better, interpret SUCRA as ranking against worst.'
           + '</div>';
 

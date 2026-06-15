@@ -7,11 +7,11 @@
  * RapidMetaPrediction engine.
  *
  * Methodology — delegates to the engine; see rapidmeta-prediction-engine-v1.js:
- *   - logit-C pool with Paule-Mandel REML τ² + HKSJ CI (Cochrane v6.5 floor,
+ *   - logit-C pool with Paule-Mandel (empirical-Bayes) τ² + HKSJ CI (Cochrane v6.5 floor,
  *     t_{k-1}); back-transform via inverse logit
- *   - Calibration intercept on raw scale (REML + HKSJ)
- *   - Calibration slope on raw scale (REML + HKSJ)
- *   - O/E ratio on log scale (REML + HKSJ), back-transform via exp
+ *   - Calibration intercept on raw scale (Paule-Mandel + HKSJ)
+ *   - Calibration slope on raw scale (Paule-Mandel + HKSJ)
+ *   - O/E ratio on log scale (Paule-Mandel + HKSJ), back-transform via exp
  *   - PROBAST per-domain RoB rollup (Wolff 2019 manual)
  *   - Derivation-vs-external-validation subgroup split with Q_between
  *
@@ -304,7 +304,7 @@
 
     // Forests
     if (F.discrimination.length > 0) {
-      html += '<div style="font-size:11px;color:#94a3b8;margin:14px 0 4px;font-weight:600;">Discrimination — C-statistic forest (logit-pooled, REML + HKSJ)</div>';
+      html += '<div style="font-size:11px;color:#94a3b8;margin:14px 0 4px;font-weight:600;">Discrimination — C-statistic forest (logit-pooled, Paule-Mandel + HKSJ)</div>';
       html += buildForest(F.discrimination, { title: 'C-statistic', unitLabel: 'C (95% CI)', refLine: 0.5, digits: 3 });
     }
     if (F.calib_int.length > 0) {
@@ -368,8 +368,8 @@
 
     // Method note
     html += '<div style="font-size:10.5px;color:#64748b;margin-top:10px;line-height:1.55;border-top:1px solid #1e293b;padding-top:8px;">'
-          + '<strong>Method:</strong> per-cohort C-statistic pooled on logit scale via Paule-Mandel REML τ² with HKSJ small-sample CI (Cochrane v6.5 floor max(1, Q/(k-1)), t<sub>k-1</sub>). Hanley-McNeil 1982 variance used when SE not reported. '
-          + 'Calibration intercept and slope pooled on raw scale; O/E ratio on log scale; Brier score on raw scale (all REML + HKSJ). Prediction intervals (Cochrane v6.5, t<sub>k-1</sub>) shown for k ≥ 3. '
+          + '<strong>Method:</strong> per-cohort C-statistic pooled on logit scale via Paule-Mandel (empirical-Bayes) τ² with HKSJ small-sample CI (Cochrane v6.5 floor max(1, Q/(k-1)), t<sub>k-1</sub>). Hanley-McNeil 1982 variance used when SE not reported. '
+          + 'Calibration intercept and slope pooled on raw scale; O/E ratio on log scale; Brier score on raw scale (all Paule-Mandel + HKSJ). Prediction intervals (Cochrane v6.5, t<sub>k-1</sub>) shown for k ≥ 3. '
           + 'PROBAST rollup per Wolff 2019 manual. References: Snell et al. 2018 BMC Med Res Methodol; Debray et al. 2017 BMJ tutorial; Royston & Sauerbrei 2013.'
           + '</div>';
     return html;

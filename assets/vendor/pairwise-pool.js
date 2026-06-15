@@ -5,21 +5,60 @@
  * than extracting from minified app.js.
  *
  * Exports (window.PairwisePool):
- *   pool2x2(trials, opts)   — DL + REML + HKSJ + PI per Cochrane Handbook v6.5
+ *   pool2x2(trials, opts)   — Paule-Mandel tau^2 + HKSJ + PI per Cochrane Handbook v6.5
  *   renderForest(elem, res, opts) — SVG forest plot with PI band
  *
  * Inputs: trials = [{name, tE, tN, cE, cN}, ...]
  *         opts.measure = 'RR' (default) | 'OR'
  *         opts.haldane = 0.5 (default) for zero-cell continuity correction
+ *         opts.tau2Method = 'PM' (default) | 'DL'
+ *
+ * tau^2 defaults to Paule-Mandel (empirical-Bayes): the value for which the
+ * generalized Q-statistic Sum w_i*(y_i - mu_w)^2 equals k-1. Preferred over
+ * DerSimonian-Laird, which is downward-biased for small k (Veroniki 2016;
+ * Cochrane Handbook). DL remains available via opts.tau2Method='DL'.
  *
  * Output (one shape, log-scale + back-transformed):
  *   { k_used, mu_log, mu, ci_lo, ci_hi, pi_lo, pi_hi, tau2, Q, I2, perStudy: [...] }
  *
  * Conventions: Cochrane Handbook v6.5 (Nov 2024 §10.10.4.3) — PI uses t_{k-1};
- * HKSJ floor = max(1, Q/(k-1)); zero-cell Haldane 0.5 only when ≥1 cell is 0.
+ * HKSJ floor = max(1, q*) where q* is the RE-weighted statistic
+ * (1/df)·Σ wRE_i·(y_i−muRE)²; zero-cell Haldane 0.5 only when ≥1 cell is 0.
  */
 (function (global) {
   'use strict';
+
+  // Generalized Q-statistic at a given tau^2 (w_i = 1/(v_i+tau2)); strictly
+  // decreasing in tau^2. Shared by the Paule-Mandel solver.
+  function genQ(yi, vi, t2) {
+    let sw = 0, swy = 0;
+    for (let i = 0; i < yi.length; i++) { const w = 1 / (vi[i] + t2); sw += w; swy += w * yi[i]; }
+    const mu = swy / sw;
+    let F = 0;
+    for (let i = 0; i < yi.length; i++) F += (yi[i] - mu) * (yi[i] - mu) / (vi[i] + t2);
+    return F;
+  }
+
+  // Paule-Mandel tau^2: solve genQ(tau2) = df by bisection (genQ monotone-
+  // decreasing, so the root is unique when genQ(0) > df). Robust for small k.
+  function tau2PM(yi, vi, df) {
+    if (genQ(yi, vi, 0) <= df) return 0;
+    let lo = 0, hi = 1, guard = 0;
+    while (genQ(yi, vi, hi) > df && guard++ < 200) hi *= 2;
+    for (let it = 0; it < 200; it++) {
+      const mid = 0.5 * (lo + hi);
+      if (genQ(yi, vi, mid) > df) lo = mid; else hi = mid;
+      if (hi - lo < 1e-12) break;
+    }
+    return 0.5 * (lo + hi);
+  }
+
+  // DerSimonian-Laird tau^2 (opts.tau2Method='DL').
+  function tau2DL(wFE, sumWFE, Q, df) {
+    if (Q <= df) return 0;
+    const C = sumWFE - wFE.reduce((s, w) => s + w * w, 0) / sumWFE;
+    return Math.max(0, (Q - df) / C);
+  }
 
   // t-distribution two-sided critical value at p=0.025 (i.e., 95% CI).
   // Hill (1970) approximation; falls back to lookup for small df.
@@ -99,12 +138,11 @@
     const Q = yi.reduce((s, y, i) => s + wFE[i] * Math.pow(y - muFE, 2), 0);
     const df = k - 1;
 
-    // DerSimonian-Laird tau^2
-    let tau2 = 0;
-    if (Q > df) {
-      const C = sumWFE - wFE.reduce((s, w) => s + w * w, 0) / sumWFE;
-      tau2 = Math.max(0, (Q - df) / C);
-    }
+    // tau^2 — Paule-Mandel by default (robust for small k); DL via opts.tau2Method='DL'.
+    const tau2Method = (opts.tau2Method || 'PM').toUpperCase();
+    const tau2 = tau2Method === 'DL'
+      ? tau2DL(wFE, sumWFE, Q, df)
+      : tau2PM(yi, vi, df);
 
     // Random-effects pool
     const wRE = vi.map(v => 1 / (v + tau2));
@@ -112,8 +150,15 @@
     const muRE = yi.reduce((s, y, i) => s + wRE[i] * y, 0) / sumWRE;
     const seMu = Math.sqrt(1 / sumWRE);
 
-    // HKSJ floor + scaling
-    const hksjFactor = Math.max(1, Q / df);
+    // HKSJ floor + scaling. The Hartung-Knapp-Sidik-Jonkman statistic uses
+    // RANDOM-effects weights and the RE pooled mean — q* = (1/df)·Σ wRE_i·(y_i−muRE)²
+    // — NOT the fixed-effect Q/df. Using FE Q/df overstates the multiplier whenever
+    // tau2>0 (CIs come out ~3x too wide vs metafor test="knha"). Floored at
+    // max(1, q*) per the HKSJ-floor rule; matches the bit-exact in-page computeCore.
+    let qStar = 0;
+    for (let i = 0; i < k; i++) { qStar += wRE[i] * Math.pow(yi[i] - muRE, 2); }
+    qStar /= df;
+    const hksjFactor = Math.max(1, qStar);
     const seMuHKSJ = seMu * Math.sqrt(hksjFactor);
 
     const tCi = tCrit975(df);
@@ -144,6 +189,7 @@
     out.pi_lo = isFinite(piLo) ? Math.exp(piLo) : NaN;
     out.pi_hi = isFinite(piHi) ? Math.exp(piHi) : NaN;
     out.tau2 = tau2;
+    out.tau2Method = tau2Method;
     out.Q = Q;
     out.I2 = I2;
     out.df = df;

@@ -407,6 +407,9 @@ body.tips-hidden .section-example { display: none !important; }
 .fig-controls-wrap > summary { cursor: pointer; font-size: 0.76rem; color: var(--paper-muted); margin-bottom: 0.3rem; }
 .fig-controls-wrap .fig-opt { font-size: 0.66rem; background: #eef2f7; color: #64748b; border-radius: 999px; padding: 0.05rem 0.4rem; }
 .fig-controls-note { flex: 1 1 100%; font-size: 0.7rem; color: var(--paper-muted); }
+.fig-ann-controls { border-top: 1px dashed var(--paper-border); padding-top: 0.4rem; }
+.fig-ann-controls .fig-ann { flex: 1 1 18rem; min-width: 12rem; padding: 0.2rem 0.4rem; border: 1px solid var(--paper-border); border-radius: 6px; font-size: 0.78rem; }
+.fig-ann-off-lbl { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.74rem; }
 .readiness-honesty { font-size: 0.72rem; color: #94a3b8; line-height: 1.45; margin: 0.6rem 0 0; border-top: 1px solid #334155; padding-top: 0.5rem; }
 .tutor-copy-btn { width: 100%; margin-top: 0.5rem; font-size: 0.76rem; font-weight: 700; padding: 0.5rem; border-radius: 0.6rem; background: #1e293b; color: #cbd5e1; border: 1px solid #475569; cursor: pointer; }
 .tutor-copy-btn:hover { background: #334155; color: #fff; }
@@ -542,17 +545,94 @@ figcaption { font-size: 0.95rem; color: var(--paper-muted); border-top: 1px soli
 }
 .author-transparency strong { color: #14532d; }
 
-/* ---- preview mode: hide scaffolding on the canvas ---- */
-#paperCanvas.paper-mode-preview .student-task-label,
-#paperCanvas.paper-mode-preview .word-target,
-#paperCanvas.paper-mode-preview .figure-learning-row,
-#paperCanvas.paper-mode-preview .author-transparency.working-only { display: none !important; }
+/* ---- preview / page mode: the WYSIWYG "edit on the typeset page" surface ----
+   The writer sees only the clean paper (every teaching-scaffold element is
+   hidden) but the text stays editable (contenteditable is left on), so it feels
+   like editing a finished PDF rather than filling in a form. */
+#paperCanvas.paper-mode-preview .no-clean-pdf { display: none !important; }
 #paperCanvas.paper-mode-preview .student-writing-box,
 #paperCanvas.paper-mode-preview .student-editable {
-  background: transparent; border: none; padding: 0;
+  background: transparent; border: none; padding: 0 2px; border-radius: 3px;
+  transition: background 0.15s, box-shadow 0.15s;
 }
+/* Empty fields stay clickable with a quiet placeholder (instead of vanishing) so
+   the writer can fill them directly on the page; the export path still strips
+   any still-empty field via the .export-clean-pdf rules below. */
 #paperCanvas.paper-mode-preview .student-writing-box:empty,
-#paperCanvas.paper-mode-preview .student-editable:empty { display: none; }
+#paperCanvas.paper-mode-preview .student-editable:empty {
+  display: inline-block; min-width: 10ch;
+}
+#paperCanvas.paper-mode-preview .student-writing-box:empty::before,
+#paperCanvas.paper-mode-preview .student-editable:empty::before {
+  content: attr(data-placeholder); color: #6f6f68; font-style: italic; font-weight: 400;
+}
+
+/* ---- a11y: keyboard focus always shows a visible outline (mouse focus uses the
+   quiet underline); the underline alone is too subtle for keyboard users. ---- */
+#paperCanvas.paper-mode-preview .student-writing-box:focus-visible,
+#paperCanvas.paper-mode-preview .student-editable:focus-visible {
+  outline: 2px solid var(--paper-accent); outline-offset: 2px;
+}
+
+/* ---- 3-step orientation banner (hidden on export, shown while writing) ---- */
+.paper-orientation {
+  position: relative; background: linear-gradient(180deg, #f0f7f1, #f6faf6);
+  border: 1px solid #cfe6d3; border-left: 4px solid var(--paper-accent);
+  border-radius: 10px; padding: 0.85rem 1.1rem 0.9rem; margin: 0 0 1.3rem;
+}
+.paper-orientation .orient-lead { margin: 0 0 0.4rem; font-size: 0.95rem; color: #14532d; }
+.paper-orientation .orient-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
+.paper-orientation .orient-steps li { font-size: 0.9rem; line-height: 1.5; color: #1f2933; }
+.paper-orientation .orient-num {
+  display: inline-flex; align-items: center; justify-content: center; width: 1.35em; height: 1.35em;
+  background: var(--paper-accent); color: #fff; border-radius: 50%; font-size: 0.78rem; font-weight: 800; margin-right: 0.3rem;
+}
+.paper-orientation .orient-chip { background: #e6f3ea; color: #166534; border-radius: 6px; padding: 0.02rem 0.35rem; font-weight: 700; white-space: nowrap; }
+.paper-orientation .orient-dismiss {
+  position: absolute; top: 0.5rem; right: 0.6rem; background: transparent; border: none;
+  color: var(--paper-muted); font-size: 0.78rem; cursor: pointer; padding: 0.1rem 0.3rem;
+}
+.export-clean-pdf .paper-orientation { display: none !important; }
+
+/* ---- structured abstract: run-in bold section labels (Background/Objective/
+   Conclusion match Methods/Results); the writing box flows inline after the
+   label in page view + export. ---- */
+.abs-structured { margin: 0.45rem 0; }
+.abs-structured > strong { margin-right: 0.3rem; }
+#paperCanvas.paper-mode-preview .abs-structured .student-writing-box,
+#paperCanvas.paper-mode-preview .abs-structured .student-editable,
+.export-clean-pdf .abs-structured .student-writing-box,
+.export-clean-pdf .abs-structured .student-editable { display: inline; }
+
+/* ---- gutter "guide" tab: a quiet ⓘ marker per section in PAGE VIEW only ----
+   hover/focus shows a one-line peek; click pins the section's guidance below. */
+.section-guide-tab { display: none; }
+#paperCanvas.paper-mode-preview .section-guide-tab {
+  display: inline-flex; align-items: center; position: absolute; left: -7.4rem; top: 0.15em;
+  width: 6.6rem; justify-content: center; gap: 0.2rem;
+  font-family: var(--paper-sans, "Segoe UI", sans-serif); font-size: 0.68rem; font-weight: 700;
+  color: var(--paper-accent); background: #f3f8f4; border: 1px solid #d3e7d8;
+  border-radius: 999px; padding: 0.1rem 0.5rem; cursor: pointer; letter-spacing: 0.02em;
+}
+#paperCanvas.paper-mode-preview h2 { position: relative; }
+#paperCanvas.paper-mode-preview .section-guide-tab:hover,
+#paperCanvas.paper-mode-preview .section-guide-tab[aria-expanded="true"] { background: var(--paper-accent); color: #fff; }
+#paperCanvas.paper-mode-preview .section-guide-tab:focus-visible { outline: 2px solid var(--paper-accent); outline-offset: 2px; }
+.section-guide-tab .guide-peek {
+  display: none; position: absolute; left: 0; top: 1.7rem; width: 17rem; z-index: 40;
+  background: #1f2933; color: #f5f7f5; font-weight: 400; font-size: 0.72rem; line-height: 1.45;
+  text-align: left; border-radius: 8px; padding: 0.5rem 0.65rem; box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+}
+.section-guide-tab:hover .guide-peek, .section-guide-tab:focus-visible .guide-peek,
+.section-guide-tab:focus-within .guide-peek { display: block; }
+/* the pinned drawer: a section's guidance, revealed inline as a panel */
+#paperCanvas.paper-mode-preview .no-clean-pdf.guide-open {
+  display: block !important; border-left: 3px solid #cfe6d3; background: #fafdfb;
+  margin: 0.4rem 0; padding: 0.5rem 0.8rem; border-radius: 0 6px 6px 0;
+}
+@media (max-width: 900px) {
+  #paperCanvas.paper-mode-preview .section-guide-tab { position: static; width: auto; left: 0; margin-left: 0.5rem; vertical-align: middle; }
+}
 
 /* ---- responsive ---- */
 @media (max-width: 1024px) {

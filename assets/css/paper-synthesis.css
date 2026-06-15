@@ -1,0 +1,221 @@
+/* paper-synthesis.css — "Synthēsis Medicine" journal theme for Paper Studio.
+   Reproduces the premium typeset look of the metapaper / synthesis-paper-spec
+   PDF (synthesis-medicine.org identity) in the browser, fully offline using
+   system fonts. Applied via the `.paper-synthesis` class on #paperCanvas — the
+   DEFAULT display for papers. The editable Word / Markdown / plain exporters are
+   untouched (those remain the path for submitting to other journals).
+
+   Palette (matched to metapaper/style.py):
+     brand green  #054f16   section heads, wordmark, kicker, rules
+     accent green #0a972a   figure numbers, links
+     emphasis red #9c2b27   the single most important mark (pooled estimate)
+     ink #1d1d1b · soft ink #39413a · grey #6f6f6a · rule #d6d8d1
+     paper wash  #f1f5ee   structured abstract / callouts
+   Type pairing: Palatino Linotype (serif body & display) × Segoe UI (sans
+   kickers, section heads, figure labels) — the editorial contrast. */
+
+#paperCanvas.paper-synthesis {
+  --syn-green: #054f16;
+  --syn-green-lt: #0a972a;
+  --syn-red: #9c2b27;
+  --syn-ink: #1d1d1b;
+  --syn-ink-soft: #39413a;
+  --syn-grey: #6f6f6a;
+  --syn-rule: #d6d8d1;
+  --syn-wash: #f1f5ee;
+  --syn-serif: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
+  --syn-sans: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  background: #ffffff;
+  color: var(--syn-ink);
+  font-family: var(--syn-serif);
+  font-size: 18px;
+  line-height: 1.62;
+  /* a touch of warmth + journal measure */
+  max-width: 940px;
+}
+
+/* ---- masthead / running head ---- */
+#paperCanvas.paper-synthesis .syn-masthead {
+  display: flex; align-items: baseline; justify-content: space-between;
+  border-bottom: 2px solid var(--syn-green); padding-bottom: 0.4rem; margin-bottom: 1.4rem;
+}
+#paperCanvas.paper-synthesis .syn-wordmark {
+  font-family: var(--syn-serif); font-weight: 700; font-size: 1.15rem; letter-spacing: 0.02em;
+  color: var(--syn-green);
+}
+#paperCanvas.paper-synthesis .syn-wordmark::first-letter { color: var(--syn-green-lt); }
+#paperCanvas.paper-synthesis .syn-runhead {
+  font-family: var(--syn-sans); font-size: 0.66rem; text-transform: uppercase;
+  letter-spacing: 0.14em; color: var(--syn-grey);
+}
+
+/* ---- kicker / article type ---- */
+#paperCanvas.paper-synthesis .paper-kicker,
+#paperCanvas.paper-synthesis .syn-kicker {
+  font-family: var(--syn-sans); font-weight: 700; font-size: 0.72rem;
+  text-transform: uppercase; letter-spacing: 0.14em; color: var(--syn-green);
+}
+
+/* ---- title / standfirst deck / byline ---- */
+#paperCanvas.paper-synthesis h1 {
+  font-family: var(--syn-serif); font-weight: 700; font-size: 2.35rem; line-height: 1.16;
+  letter-spacing: -0.01em; color: var(--syn-ink); margin: 0.35rem 0 0.5rem;
+}
+#paperCanvas.paper-synthesis .syn-deck {
+  font-family: var(--syn-serif); font-style: italic; font-size: 1.28rem; line-height: 1.42;
+  color: var(--syn-ink-soft); margin: 0 0 0.9rem;
+}
+#paperCanvas.paper-synthesis .syn-byline {
+  font-family: var(--syn-serif); font-size: 1.02rem; color: var(--syn-ink); margin: 0.3rem 0 0.1rem;
+}
+#paperCanvas.paper-synthesis .syn-affil {
+  font-family: var(--syn-serif); font-style: italic; font-size: 0.86rem; color: var(--syn-grey);
+}
+#paperCanvas.paper-synthesis .syn-meta {
+  font-family: var(--syn-sans); font-size: 0.74rem; color: var(--syn-grey);
+  border-top: 0.6px solid var(--syn-rule); border-bottom: 0.6px solid var(--syn-rule);
+  padding: 0.35rem 0; margin: 0.9rem 0 1.3rem;
+}
+
+/* ---- section heads (Segoe UI bold, brand green, hairline rule) ---- */
+#paperCanvas.paper-synthesis h2 {
+  font-family: var(--syn-sans); font-weight: 700; font-size: 1.12rem; letter-spacing: 0.01em;
+  color: var(--syn-green); text-transform: none;
+  border-bottom: 0.8px solid var(--syn-rule); padding-bottom: 0.3rem;
+  margin: 2.1rem 0 0.7rem;
+}
+#paperCanvas.paper-synthesis h3 {
+  font-family: var(--syn-sans); font-weight: 700; font-size: 0.96rem; color: var(--syn-ink-soft);
+  margin: 1.2rem 0 0.3rem;
+}
+
+/* ---- body: justified serif with hyphenation, like the PDF ---- */
+#paperCanvas.paper-synthesis p,
+#paperCanvas.paper-synthesis li {
+  font-family: var(--syn-serif); font-size: 1.04rem; line-height: 1.62; color: var(--syn-ink);
+  text-align: justify; hyphens: auto;
+}
+#paperCanvas.paper-synthesis a { color: var(--syn-green-lt); text-decoration: none; border-bottom: 0.6px solid var(--syn-green-lt); }
+
+/* ---- structured abstract (green paper wash) ---- */
+#paperCanvas.paper-synthesis .syn-abstract,
+#paperCanvas.paper-synthesis .evidence-summary-card,
+#paperCanvas.paper-synthesis .cover-summary-card {
+  background: var(--syn-wash); border: none; border-left: 3px solid var(--syn-green);
+  border-radius: 0 6px 6px 0; padding: 1rem 1.3rem; margin: 1.2rem 0 1.6rem;
+}
+#paperCanvas.paper-synthesis .syn-abstract .abs-label {
+  font-family: var(--syn-sans); font-weight: 700; font-size: 0.72rem; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--syn-green); margin-right: 0.4rem;
+}
+#paperCanvas.paper-synthesis .syn-abstract p { text-align: justify; font-size: 0.96rem; line-height: 1.5; margin: 0.25rem 0; }
+
+/* ---- pull-quote "key finding" — the single editorial-red emphasis ---- */
+#paperCanvas.paper-synthesis .syn-pullquote {
+  font-family: var(--syn-serif); font-size: 1.45rem; line-height: 1.4; color: var(--syn-ink);
+  border-left: 3px solid var(--syn-red); padding: 0.2rem 0 0.2rem 1.1rem; margin: 1.5rem 0;
+}
+#paperCanvas.paper-synthesis .syn-pullquote .syn-pull-sub {
+  display: block; font-family: var(--syn-sans); font-size: 0.78rem; color: var(--syn-grey);
+  margin-top: 0.4rem; font-weight: 600;
+}
+#paperCanvas.paper-synthesis .syn-emph { color: var(--syn-red); font-weight: 700; }
+
+/* ---- numbered figures ---- */
+#paperCanvas.paper-synthesis .paper-figure-card {
+  border: none; border-top: 0.8px solid var(--syn-rule); border-bottom: 0.8px solid var(--syn-rule);
+  border-radius: 0; background: #fff; padding: 1rem 0 0.8rem; margin: 1.6rem 0;
+}
+#paperCanvas.paper-synthesis .figure-label,
+#paperCanvas.paper-synthesis .figure-card-header h3 {
+  font-family: var(--syn-sans); color: var(--syn-green); text-transform: none; letter-spacing: 0;
+}
+#paperCanvas.paper-synthesis .figure-label { font-weight: 700; font-size: 0.8rem; }
+#paperCanvas.paper-synthesis figcaption,
+#paperCanvas.paper-synthesis .syn-caption {
+  font-family: var(--syn-serif); font-size: 0.86rem; line-height: 1.4; color: var(--syn-ink-soft);
+  text-align: justify; border-top: none; padding-top: 0.4rem;
+}
+
+/* ---- booktabs-style tables ---- */
+#paperCanvas.paper-synthesis table {
+  width: 100%; border-collapse: collapse; font-family: var(--syn-serif); font-size: 0.88rem;
+  margin: 1rem 0;
+}
+#paperCanvas.paper-synthesis thead th {
+  font-family: var(--syn-sans); font-weight: 700; font-size: 0.78rem; color: var(--syn-green);
+  text-align: left; border-top: 1.2px solid var(--syn-ink); border-bottom: 0.8px solid var(--syn-ink);
+  padding: 0.35rem 0.5rem;
+}
+#paperCanvas.paper-synthesis tbody td { padding: 0.3rem 0.5rem; border-bottom: 0.5px solid var(--syn-rule); }
+#paperCanvas.paper-synthesis tbody tr:last-child td { border-bottom: 1.2px solid var(--syn-ink); }
+
+/* ---- references: hanging indent ---- */
+#paperCanvas.paper-synthesis .syn-refs p,
+#paperCanvas.paper-synthesis [data-field="studentText.references"] {
+  font-family: var(--syn-serif); font-size: 0.85rem; line-height: 1.45;
+  padding-left: 1.1rem; text-indent: -1.1rem; text-align: left;
+}
+
+/* ---- how-to-cite block ---- */
+#paperCanvas.paper-synthesis .syn-cite {
+  font-family: var(--syn-sans); font-size: 0.78rem; line-height: 1.5; color: var(--syn-ink-soft);
+  background: var(--syn-wash); border-radius: 6px; padding: 0.7rem 1rem; margin: 1.4rem 0;
+}
+#paperCanvas.paper-synthesis .syn-cite strong { color: var(--syn-green); }
+
+/* In the SYNTHESIS theme the yellow writing-boxes get a calmer journal tint while
+   editing (the bright amber clashes with the serif page); preview/export still
+   strip them entirely via the existing paper-mode-preview / export-clean-pdf rules. */
+#paperCanvas.paper-synthesis .student-writing-box,
+#paperCanvas.paper-synthesis .student-editable {
+  background: #fbfcf9; border: 1px dashed #c4cfbc;
+}
+#paperCanvas.paper-synthesis .student-writing-box:focus,
+#paperCanvas.paper-synthesis .student-editable:focus { background: #fff; border-color: var(--syn-green); }
+
+/* ---- WYSIWYG "edit on the page" — Synthēsis preview/page mode ----
+   In the clean page view the editable text reads as part of the typeset paper
+   (serif, no form box). A quiet green tint on hover and a green underline on
+   focus signal what can be edited, so the writer feels they are editing a
+   finished PDF. Higher specificity (two classes on #paperCanvas) so it wins over
+   the dashed-box rule above. */
+#paperCanvas.paper-synthesis.paper-mode-preview .student-writing-box,
+#paperCanvas.paper-synthesis.paper-mode-preview .student-editable {
+  background: transparent; border: none; color: var(--syn-ink);
+  font-family: var(--syn-serif);
+}
+#paperCanvas.paper-synthesis.paper-mode-preview .student-writing-box:hover,
+#paperCanvas.paper-synthesis.paper-mode-preview .student-editable:hover {
+  background: rgba(5, 79, 22, 0.055); cursor: text;
+}
+#paperCanvas.paper-synthesis.paper-mode-preview .student-writing-box:focus,
+#paperCanvas.paper-synthesis.paper-mode-preview .student-editable:focus {
+  background: #fff; box-shadow: inset 0 -2px 0 var(--syn-green-lt); outline: none;
+}
+/* keyboard focus keeps a visible outline (the underline alone is too quiet) */
+#paperCanvas.paper-synthesis.paper-mode-preview .student-writing-box:focus-visible,
+#paperCanvas.paper-synthesis.paper-mode-preview .student-editable:focus-visible {
+  outline: 2px solid var(--syn-green); outline-offset: 2px;
+}
+/* guide tab + orientation in the Synthēsis green palette */
+#paperCanvas.paper-synthesis.paper-mode-preview .section-guide-tab {
+  color: var(--syn-green); background: var(--syn-wash); border-color: #cdddc6;
+}
+#paperCanvas.paper-synthesis.paper-mode-preview .section-guide-tab:hover,
+#paperCanvas.paper-synthesis.paper-mode-preview .section-guide-tab[aria-expanded="true"] {
+  background: var(--syn-green); color: #fff;
+}
+#paperCanvas.paper-synthesis.paper-mode-preview .no-clean-pdf.guide-open {
+  border-left-color: var(--syn-green-lt); background: #fbfdfa;
+}
+
+/* ---- print / clean-PDF: A4 measure, running head on every page ---- */
+@media print {
+  #paperCanvas.paper-synthesis { font-size: 11pt; max-width: 100%; }
+  #paperCanvas.paper-synthesis h1 { font-size: 21pt; }
+  #paperCanvas.paper-synthesis .paper-figure-card { break-inside: avoid; }
+  @page { margin: 2cm 1.8cm; }
+}
+.export-clean-pdf #paperCanvas.paper-synthesis,
+#paperCanvas.paper-synthesis.paper-mode-preview { max-width: 940px; }

@@ -1,4 +1,4 @@
-# Dashboard engine upgrade (2026-06-04)
+# Dashboard engine upgrade (2026-06-15)
 
 This dashboard was upgraded to the current **RapidMeta** engine (`rapidmeta-kit`) via a verbatim data-layer **transplant** — every curated trial, evidence card, snippet, and RoB rating from the prior version is preserved, while the statistics engine (REML, HKSJ, Egger, GRADE, PRISMA, WebR, Plotly NMA) was refreshed.
 

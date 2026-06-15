@@ -120,7 +120,7 @@
 
     var panel = P.buildCollapsiblePanel({
       id: 'interval-hr-pool-panel',
-      badge: 'Interval HR',
+      badge: 'Interval HR · Experimental',
       summary: summary,
       bodyHtml: buildBody(P, trials, pool),
       storageKey: STORAGE_KEY

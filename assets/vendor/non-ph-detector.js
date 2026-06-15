@@ -17,10 +17,12 @@
     if (!rd) return [];
     var out = [];
     Object.values(rd).forEach(function (t) {
-      if (typeof t.HR === 'number' && isFinite(t.HR)) {
+      if (String(t.estimandType || 'HR').toUpperCase() !== 'HR') return;  // HR-estimand only
+      var HR = isFinite(+t.HR) ? +t.HR : +t.publishedHR;                  // accept realData name
+      if (isFinite(HR)) {
         out.push({
           studlab: String(t.name || t.studlab || '?'),
-          HR: +t.HR,
+          HR: HR,
           schoenfeld_p: typeof t.schoenfeld_p === 'number' ? +t.schoenfeld_p : null,
           curve_crosses: t.curve_crosses === true
         });

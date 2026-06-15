@@ -165,7 +165,7 @@
     html += '</tbody></table></div>';
 
     // Method note + legend
-    html += '<div style="font-size:10.5px;color:#64748b;margin-top:8px;line-height:1.5;border-top:1px solid #1e293b;padding-top:8px;">'
+    html += '<div style="font-size:10.5px;color:#94a3b8;margin-top:8px;line-height:1.5;border-top:1px solid #1e293b;padding-top:8px;">'
           + '<strong>Legend:</strong> '
           + '<span style="color:#34d399;font-weight:700;">+</span> Low risk · '
           + '<span style="color:#fca5a5;font-weight:700;">−</span> High risk · '

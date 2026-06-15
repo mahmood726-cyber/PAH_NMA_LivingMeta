@@ -96,7 +96,7 @@
           + '</div>';
 
     html += '<table style="width:100%;font-size:11.5px;border-collapse:collapse;">';
-    html += '<thead><tr style="color:#64748b;text-align:left;">'
+    html += '<thead><tr style="color:#94a3b8;text-align:left;">'
           + '<th style="padding:5px 8px;border-bottom:1px solid #1e293b;">Item</th>'
           + '<th style="padding:5px 8px;border-bottom:1px solid #1e293b;text-align:center;">Status</th>'
           + '<th style="padding:5px 8px;border-bottom:1px solid #1e293b;">Detail</th>'
@@ -117,7 +117,7 @@
     });
     html += '</tbody></table>';
 
-    html += '<div style="font-size:10.5px;color:#64748b;margin-top:8px;line-height:1.5;border-top:1px solid #1e293b;padding-top:8px;">'
+    html += '<div style="font-size:10.5px;color:#94a3b8;margin-top:8px;line-height:1.5;border-top:1px solid #1e293b;padding-top:8px;">'
           + '<strong>About INSPECT-SR:</strong> a trustworthiness checklist for systematic reviews '
           + '(medRxiv 2025.09.03; Cochrane endorsement Oct 2025). Across 95 RCTs / 50 Cochrane reviews, '
           + '<strong>32%</strong> raised authenticity concerns and <strong>22%</strong> of MAs would have '

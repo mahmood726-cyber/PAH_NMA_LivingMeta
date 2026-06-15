@@ -82,33 +82,97 @@
     // Hedges' correction
     const J = 1 - 3 / (4 * dfp - 1);
     const g = J * d;
-    // Variance (Hedges 1985)
+    // Variance of Hedges' g matching metafor escalc(measure="SMD"): the
+    // small-sample J correction is ALREADY carried by using the corrected g in
+    // the second term, so v itself is the corrected variance. The previous
+    // `v * J * J` double-applied J and deflated the variance up to ~8% for small
+    // studies (n1=n2=10), making inverse-variance weights too large and CIs too
+    // narrow — anticonservative exactly where the correction matters most.
     const v = ((t.n1 + t.n2) / (t.n1 * t.n2)) + (g * g) / (2 * (t.n1 + t.n2));
-    return { yi: g, vi: v * J * J };
+    return { yi: g, vi: v };
   }
 
-  function poolDLRE(points) {
+  // ---- Random-effects engine: Paule-Mandel τ² + RE-weighted Knapp-Hartung
+  // (floored) + t_{k-1} CI + Cochrane v6.5 prediction interval. Mirrors the
+  // bit-exact in-page computeCore binary engine and pairwise-pool.js. Replaces
+  // the old DerSimonian-Laird + hardcoded z=1.96 pool, which was anticonservative
+  // for small k (DL is biased for k<10; no HKSJ inflation, no t critical value,
+  // no prediction interval — CIs came out ~2x too narrow at k≈4).
+  // REML τ² via Fisher scoring (Viechtbauer 2005), started from the DL estimate —
+  // the exact algorithm used by the bit-exact in-page computeCore engine, and the
+  // Cochrane v6.5 / RevMan-2025 default. REML (not PM) is used so the downstream
+  // Knapp-Hartung statistic genuinely inflates: under PM the RE-weighted q* is 1
+  // by construction (PM sets generalized Q = df), which would make HKSJ a no-op.
+  function tau2REML(points) {
+    const k = points.length, df = k - 1;
+    let W = 0, WY = 0, sW2 = 0;
+    points.forEach(p => { const w = 1 / p.vi; W += w; WY += w * p.yi; sW2 += w * w; });
+    const muFE = WY / W;
+    let Q = 0; points.forEach(p => { const w = 1 / p.vi; Q += w * (p.yi - muFE) * (p.yi - muFE); });
+    let tau2 = (Q > df) ? (Q - df) / (W - sW2 / W) : 0;   // DL start
+    if (k < 2) return Math.max(0, tau2);
+    for (let it = 0; it < 100; it++) {
+      const w = points.map(p => 1 / (p.vi + tau2));
+      const sW = w.reduce((a, b) => a + b, 0);
+      const mu = w.reduce((a, wi, i) => a + wi * points[i].yi, 0) / sW;
+      const s2 = w.reduce((a, wi) => a + wi * wi, 0);
+      const s3 = w.reduce((a, wi) => a + wi * wi * wi, 0);
+      const trP = sW - s2 / sW;
+      const yP2y = w.reduce((a, wi, i) => a + wi * wi * Math.pow(points[i].yi - mu, 2), 0);
+      const trP2 = s2 - 2 * s3 / sW + s2 * s2 / (sW * sW);
+      if (trP2 < 1e-15) break;
+      const next = Math.max(0, tau2 + (yP2y - trP) / trP2);
+      if (Math.abs(next - tau2) < 1e-10) { tau2 = next; break; }
+      tau2 = next;
+    }
+    return Math.max(0, tau2);
+  }
+  const T_975 = { 1:12.706,2:4.303,3:3.182,4:2.776,5:2.571,6:2.447,7:2.365,8:2.306,
+    9:2.262,10:2.228,11:2.201,12:2.179,13:2.160,14:2.145,15:2.131,16:2.120,17:2.110,
+    18:2.101,19:2.093,20:2.086,21:2.080,22:2.074,23:2.069,24:2.064,25:2.060,26:2.056,
+    27:2.052,28:2.048,29:2.045,30:2.042 };
+  function tCrit975(df) {
+    if (df < 1) return NaN;
+    if (df > 30) return 1.96;
+    return T_975[Math.round(df)] || 1.96;
+  }
+
+  function poolRE(points) {
     if (!points || points.length < 2) return null;
+    const k = points.length, df = k - 1;
+    // Fixed-effect Q / I²
     let W = 0, WY = 0;
-    points.forEach(p => { const w = 1/p.vi; W += w; WY += w * p.yi; });
+    points.forEach(p => { const w = 1 / p.vi; W += w; WY += w * p.yi; });
     const yFE = WY / W;
     let Q = 0;
-    points.forEach(p => { const w = 1/p.vi; Q += w * (p.yi - yFE) * (p.yi - yFE); });
-    const df = points.length - 1;
-    const sumW2 = points.reduce((s, p) => s + Math.pow(1/p.vi, 2), 0);
-    const c = W - sumW2 / W;
-    const tau2 = Math.max(0, (Q - df) / c);
-    let W2 = 0, WY2 = 0;
-    points.forEach(p => { const w = 1/(p.vi + tau2); W2 += w; WY2 += w * p.yi; });
-    const yRE = WY2 / W2;
-    const seRE = Math.sqrt(1/W2);
+    points.forEach(p => { const w = 1 / p.vi; Q += w * (p.yi - yFE) * (p.yi - yFE); });
     const I2 = Q > df ? Math.max(0, (Q - df) / Q) * 100 : 0;
-    return {
-      yi: yRE, se: seRE,
-      ci_low: yRE - 1.96 * seRE,
-      ci_high: yRE + 1.96 * seRE,
-      k: points.length, tau2, Q, df, I2,
+    // REML τ² (Cochrane v6.5 default; DerSimonian-Laird is biased for k<10).
+    const tau2 = tau2REML(points);
+    // Random-effects pool
+    let W2 = 0, WY2 = 0;
+    points.forEach(p => { const w = 1 / (p.vi + tau2); W2 += w; WY2 += w * p.yi; });
+    const yRE = WY2 / W2;
+    const seMu = Math.sqrt(1 / W2);
+    // Knapp-Hartung: RE-weighted q* (NOT fixed-effect Q/df), floored at 1.
+    let qStar = 0;
+    points.forEach(p => { const w = 1 / (p.vi + tau2); qStar += w * (p.yi - yRE) * (p.yi - yRE); });
+    qStar /= df;
+    const seH = seMu * Math.sqrt(Math.max(1, qStar));
+    const t = tCrit975(df);
+    const out = {
+      yi: yRE, se: seH,
+      ci_low: yRE - t * seH,
+      ci_high: yRE + t * seH,
+      k, tau2, Q, df, I2,
     };
+    // Cochrane v6.5 prediction interval: t_{k-1} × √(τ² + SE_µ²); undefined for k<3.
+    if (k >= 3) {
+      const seP = Math.sqrt(tau2 + seMu * seMu);
+      out.pi_low = yRE - t * seP;
+      out.pi_high = yRE + t * seP;
+    }
+    return out;
   }
 
   function buildBody(P, trials, mdPool, smdPool) {
@@ -128,10 +192,16 @@
            + '</div>';
     }
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:10px;">';
+    function piText(pool) {
+      return (pool.k >= 3 && isFinite(pool.pi_low))
+        ? fmt(pool.pi_low, 2) + '–' + fmt(pool.pi_high, 2)
+        : 'n/a (k<3)';
+    }
     if (mdPool) {
       html += cell('Pooled MD',
         fmt(mdPool.yi, 2),
         '95% CI ' + fmt(mdPool.ci_low, 2) + '–' + fmt(mdPool.ci_high, 2));
+      html += cell('95% PI (MD)', piText(mdPool), 't_{k-1} √(τ²+SE²)');
       html += cell('I² (MD)', fmt(mdPool.I2, 1) + '%');
       html += cell('τ² (MD)', fmt(mdPool.tau2, 4));
     }
@@ -139,10 +209,14 @@
       html += cell('Pooled SMD (Hedges g)',
         fmt(smdPool.yi, 2),
         '95% CI ' + fmt(smdPool.ci_low, 2) + '–' + fmt(smdPool.ci_high, 2));
+      html += cell('95% PI (SMD)', piText(smdPool), 't_{k-1} √(τ²+SE²)');
       html += cell('I² (SMD)', fmt(smdPool.I2, 1) + '%');
     }
     html += cell('Trials', String(trials.length), 'continuous-outcome');
     html += '</div>';
+    html += '<div style="font-size:10px;color:#64748b;margin:-4px 0 10px;">'
+          + 'Pooling: REML τ² + Knapp-Hartung (floored) + t<sub>k-1</sub> CI + Cochrane v6.5 prediction interval.'
+          + '</div>';
 
     // Per-trial table
     html += '<div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">Per-trial effect estimates:</div>';
@@ -194,8 +268,8 @@
 
     const mdPoints = trials.map(md).filter(p => isFinite(p.yi) && p.vi > 0);
     const smdPoints = trials.map(smdHedges).filter(p => isFinite(p.yi) && p.vi > 0);
-    const mdPool = poolDLRE(mdPoints);
-    const smdPool = poolDLRE(smdPoints);
+    const mdPool = poolRE(mdPoints);
+    const smdPool = poolRE(smdPoints);
 
     if (!mdPool && !smdPool) return false;
 

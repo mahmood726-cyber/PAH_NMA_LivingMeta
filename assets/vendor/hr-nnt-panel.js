@@ -15,14 +15,21 @@
     if (!rd) return [];
     var out = [];
     Object.values(rd).forEach(function (t) {
-      if (typeof t.HR === 'number' && typeof t.HR_ci_lo === 'number' && typeof t.HR_ci_hi === 'number') {
+      // Only pool genuine hazard-ratio trials — RR/OR packs (finerenone is
+      // estimandType:'RR') must NOT be surfaced as HRs (category error).
+      if (String(t.estimandType || 'HR').toUpperCase() !== 'HR') return;
+      // Accept either the survival-panel field names (HR/HR_ci_lo/HR_ci_hi) or
+      // the rapidmeta realData names (publishedHR/hrLCI/hrUCI).
+      var HR = isFinite(+t.HR) ? +t.HR : +t.publishedHR;
+      var lo = isFinite(+t.HR_ci_lo) ? +t.HR_ci_lo : +t.hrLCI;
+      var hi = isFinite(+t.HR_ci_hi) ? +t.HR_ci_hi : +t.hrUCI;
+      if (isFinite(HR) && isFinite(lo) && isFinite(hi)) {
         out.push({
           studlab: String(t.name || t.studlab || '?'),
-          HR: +t.HR,
-          HR_ci_lo: +t.HR_ci_lo,
-          HR_ci_hi: +t.HR_ci_hi,
-          events_ctl: t.events_ctl,
-          n_ctl: t.n_ctl
+          HR: HR, HR_ci_lo: lo, HR_ci_hi: hi,
+          // baseline-risk for NNT: fall back to comparator-arm 2x2 (cE/cN).
+          events_ctl: isFinite(+t.events_ctl) ? +t.events_ctl : +t.cE,
+          n_ctl: isFinite(+t.n_ctl) ? +t.n_ctl : +t.cN
         });
       }
     });
@@ -64,7 +71,7 @@
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px;">';
     function cell(label, value, sub) {
       return '<div style="background:#0b1220;border:1px solid #1e293b;border-radius:6px;padding:6px 8px;">'
-           + '<div style="font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">' + label + '</div>'
+           + '<div style="font-size:9.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">' + label + '</div>'
            + '<div style="font-size:13px;color:#f1f5f9;font-weight:700;font-family:JetBrains Mono,monospace;margin-top:2px;">' + value + '</div>'
            + (sub ? '<div style="font-size:10px;color:#94a3b8;margin-top:1px;">' + sub + '</div>' : '')
            + '</div>';
@@ -76,7 +83,7 @@
     html += cell('ARR', nnt.arr != null ? fmt(Math.abs(nnt.arr) * 100, 2) + 'pp' : '—');
     html += '</div>';
 
-    html += '<div style="font-size:10.5px;color:#64748b;margin-top:8px;line-height:1.5;">'
+    html += '<div style="font-size:10.5px;color:#94a3b8;margin-top:8px;line-height:1.5;">'
           + 'Method: NNT for time-to-event meta-analyses (Altman & Andersen 2002). '
           + 'ARR = R_ctl − (1 − (1 − R_ctl)^HR); NNT = 1/|ARR|. '
           + 'Baseline risk inferred as the median crude control-arm event rate across trials. '

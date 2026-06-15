@@ -153,7 +153,7 @@
       'while IntHout/Higgins/Tudur Smith 2016 used t_{k−2}. Both are defensible but they differ. This engine reports t_{k−1} for ' +
       'RevMan-2025 bit-reproducibility. The HKSJ floor max(1, Q/(k−1)) prevents the CI narrowing below the DL random-effects width ' +
       'when Q&lt;df (Hartung 2008, Knapp 2003). When the floor is <em>active</em>, the HKSJ CI is intentionally widened. ' +
-      'See <code>~/.claude/rules/advanced-stats.md</code> for the full convention rule.' +
+      'See the project methods note (Cochrane Handbook v6.5 §10.10.4.3) for the full convention rule.' +
       '</div>' +
       '</div>';
 

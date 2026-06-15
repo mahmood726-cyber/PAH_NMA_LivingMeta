@@ -68,29 +68,75 @@
   }
 
   /**
-   * Detect star network: a network where every comparison includes the
-   * reference treatment (no edge between two non-reference treatments).
-   * Returns {isStar: bool, reference: string|null, edges: [[t1, t2], ...]}.
+   * Classify the treatment network's topology. A network meta-analysis is only
+   * valid on a CONNECTED network (advanced-stats.md: "Disconnected networks:
+   * cannot do NMA — check connectivity first"), and consistency can only be
+   * tested when at least one CLOSED LOOP (cycle) exists — a star or a tree/chain
+   * has no independent loop, so direct and indirect evidence never coincide.
+   *
+   * Uses union-find over the edges to find connected components, then counts
+   * independent loops via Euler's formula  loops = E - V + components.
+   *
+   * Returns {isStar, disconnected, hasLoop, nLoops, nComponents,
+   *          isolatedTreatments, reference, edges, nNodes, kind}.
+   *   kind ∈ {'empty','disconnected','star','tree','closed-loop'}.
    */
   function classifyNetwork(cfg) {
     const treatments = (cfg && cfg.treatments) || [];
     const comparisons = (cfg && cfg.comparisons) || [];
     const edges = comparisons.map(c => [c.t1, c.t2]);
-    if (!edges.length) return { isStar: false, reference: null, edges, nNodes: treatments.length };
-    // Build degree map
+    if (!edges.length) {
+      return {
+        isStar: false, disconnected: treatments.length > 1, hasLoop: false,
+        nLoops: 0, nComponents: 0, isolatedTreatments: treatments.slice(),
+        reference: null, edges, nNodes: treatments.length, kind: 'empty',
+      };
+    }
+    // Degree map + node set (only nodes that actually appear in an edge).
     const deg = {};
+    const nodeSet = {};
     edges.forEach(([a, b]) => {
-      deg[a] = (deg[a] || 0) + 1;
-      deg[b] = (deg[b] || 0) + 1;
+      deg[a] = (deg[a] || 0) + 1; deg[b] = (deg[b] || 0) + 1;
+      nodeSet[a] = true; nodeSet[b] = true;
     });
-    // Reference candidate: highest-degree node
+    const nodes = Object.keys(nodeSet);
+
+    // Union-find over edge-touched nodes -> connected components.
+    const parent = {};
+    nodes.forEach(n => { parent[n] = n; });
+    function find(x) { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+    function union(a, b) { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; }
+    edges.forEach(([a, b]) => union(a, b));
+    const roots = {};
+    nodes.forEach(n => { roots[find(n)] = true; });
+    const nComponents = Object.keys(roots).length;
+
+    // Treatments declared in cfg.treatments but never compared are isolated.
+    const isolatedTreatments = treatments.filter(t => !nodeSet[t]);
+    const disconnected = nComponents > 1 || isolatedTreatments.length > 0;
+
+    // Independent loops (cycles) via Euler: E - V + components. Use distinct
+    // edges so a duplicated comparison can't fabricate a phantom loop.
+    const distinctEdges = new Set(edges.map(([a, b]) => [a, b].sort().join('')));
+    const nLoops = distinctEdges.size - nodes.length + nComponents;
+    const hasLoop = nLoops > 0;
+
+    // Reference candidate: highest-degree node.
     let ref = null, maxDeg = 0;
-    Object.keys(deg).forEach(t => {
-      if (deg[t] > maxDeg) { maxDeg = deg[t]; ref = t; }
-    });
-    // Star iff every edge touches the reference
-    const isStar = edges.every(([a, b]) => a === ref || b === ref);
-    return { isStar, reference: ref, edges, nNodes: treatments.length };
+    Object.keys(deg).forEach(t => { if (deg[t] > maxDeg) { maxDeg = deg[t]; ref = t; } });
+    // Star iff connected AND every edge touches the reference AND no loop.
+    const isStar = !disconnected && !hasLoop && edges.every(([a, b]) => a === ref || b === ref);
+
+    let kind;
+    if (disconnected) kind = 'disconnected';
+    else if (hasLoop) kind = 'closed-loop';
+    else if (isStar) kind = 'star';
+    else kind = 'tree';
+
+    return {
+      isStar, disconnected, hasLoop, nLoops, nComponents, isolatedTreatments,
+      reference: ref, edges, nNodes: treatments.length || nodes.length, kind,
+    };
   }
 
   /**
@@ -167,7 +213,10 @@
    */
   function computeNodeSplits(cfg, edges_pooled, networkInfo) {
     const splits = [];
-    if (networkInfo.isStar) return splits;
+    // Node-splitting is only defined on a connected network with >=1 closed
+    // loop. A star, a tree/chain, or a disconnected forest has no alternative
+    // path, so there is nothing to split -- never fabricate a test.
+    if (networkInfo.isStar || networkInfo.disconnected || !networkInfo.hasLoop) return splits;
 
     const ref = networkInfo.reference;
     const byEdge = new Map();
@@ -251,8 +300,15 @@
     const localSig = splits.filter(s => s.p < 0.05).length;
 
     let overall = 'Not estimable';
-    if (network.isStar) {
+    if (network.disconnected) {
+      const bits = [];
+      if (network.nComponents > 1) bits.push(network.nComponents + ' disconnected sub-networks');
+      if (network.isolatedTreatments.length) bits.push(network.isolatedTreatments.length + ' isolated treatment(s)');
+      overall = 'DISCONNECTED network (' + bits.join(', ') + ') — cannot be analysed as a single NMA; no evidence path links every treatment';
+    } else if (network.isStar) {
       overall = 'STAR network — consistency cannot be tested (no closed loops)';
+    } else if (!network.hasLoop) {
+      overall = 'TREE network — consistency cannot be tested (no closed loops)';
     } else if (!pvals.length) {
       overall = 'CLOSED-LOOP network but no testable nodes (insufficient direct evidence)';
     } else if (fisher && fisher.p < 0.05) {
@@ -289,8 +345,15 @@
       return;
     }
 
-    const tier = result.network.isStar ? '#3b82f6' : (result.summary.fisher && result.summary.fisher.p < 0.05 ? '#ef4444' : '#10b981');
-    const network_label = result.network.isStar ? 'STAR' : 'CLOSED-LOOP';
+    const net = result.network;
+    const tier = net.disconnected ? '#ef4444'
+      : net.isStar ? '#3b82f6'
+      : !net.hasLoop ? '#f59e0b'
+      : (result.summary.fisher && result.summary.fisher.p < 0.05 ? '#ef4444' : '#10b981');
+    const network_label = net.disconnected ? 'DISCONNECTED'
+      : net.isStar ? 'STAR'
+      : !net.hasLoop ? 'TREE'
+      : 'CLOSED-LOOP';
     const measure = result.measure || 'RR';
 
     let html = '';
@@ -367,5 +430,5 @@
     container.innerHTML = html;
   }
 
-  global.NMAConsistency = { analyze, render };
+  global.NMAConsistency = { analyze, render, classifyNetwork };
 })(typeof window !== 'undefined' ? window : globalThis);

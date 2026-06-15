@@ -1,10 +1,11 @@
 /* NMA forest for continuous outcomes — analogue of nma-forest-all-treatments.js
  * for NMAs whose primary outcome is continuous (mean difference, SMD, change-from-baseline).
  *
- * Per comparison T vs reference, pools log-MD via DerSimonian–Laird random
- * effects on trial-level (md, se) extracted from allOutcomes[*] with
- * type='CONTINUOUS'. Self-skips silently if not an NMA, or no continuous
- * outcomes detected.
+ * Per comparison T vs reference, pools the mean difference (MD, natural scale —
+ * MD is additive and must NOT be log-transformed; only ratio measures are) via
+ * Paule-Mandel τ² + Knapp-Hartung + t_{k-1} random effects on trial-level
+ * (md, se) extracted from allOutcomes[*] with type='CONTINUOUS'. Self-skips
+ * silently if not an NMA, or no continuous outcomes detected.
  *
  * Auto-bootstrap; collapsed by default.
  */
@@ -45,7 +46,27 @@
     return null;
   }
 
-  function poolDLRE(points) {
+  // Paule-Mandel τ² + RE-weighted Knapp-Hartung (floored) + t_{k-1} CI + Cochrane
+  // v6.5 prediction interval. Mirrors the bit-exact in-page computeCore engine
+  // (replaces DerSimonian-Laird + z=1.96, anticonservative for small k).
+  function _genQ(points, t2) {
+    let sw = 0, swy = 0;
+    points.forEach(p => { const w = 1 / (p.vi + t2); sw += w; swy += w * p.yi; });
+    const mu = swy / sw;
+    let F = 0; points.forEach(p => { F += (p.yi - mu) * (p.yi - mu) / (p.vi + t2); });
+    return F;
+  }
+  function _tau2PM(points, df) {
+    if (_genQ(points, 0) <= df) return 0;
+    let lo = 0, hi = 1, g = 0;
+    while (_genQ(points, hi) > df && g++ < 200) hi *= 2;
+    for (let it = 0; it < 200; it++) { const m = 0.5 * (lo + hi); if (_genQ(points, m) > df) lo = m; else hi = m; if (hi - lo < 1e-12) break; }
+    return 0.5 * (lo + hi);
+  }
+  const _T975 = { 1:12.706,2:4.303,3:3.182,4:2.776,5:2.571,6:2.447,7:2.365,8:2.306,9:2.262,10:2.228,11:2.201,12:2.179,13:2.160,14:2.145,15:2.131,16:2.120,17:2.110,18:2.101,19:2.093,20:2.086,21:2.080,22:2.074,23:2.069,24:2.064,25:2.060,26:2.056,27:2.052,28:2.048,29:2.045,30:2.042 };
+  function _tCrit(df) { return df < 1 ? NaN : (df > 30 ? 1.96 : (_T975[Math.round(df)] || 1.96)); }
+
+  function poolRE(points) {
     if (!points || points.length === 0) return null;
     if (points.length === 1) {
       const p = points[0];
@@ -54,25 +75,23 @@
                ci_high: p.yi + 1.96 * Math.sqrt(p.vi),
                k: 1, tau2: 0 };
     }
+    const k = points.length, df = k - 1;
     let W = 0, WY = 0;
-    points.forEach(p => { const w = 1/p.vi; W += w; WY += w * p.yi; });
+    points.forEach(p => { const w = 1 / p.vi; W += w; WY += w * p.yi; });
     const yFE = WY / W;
-    let Q = 0;
-    points.forEach(p => { const w = 1/p.vi; Q += w * Math.pow(p.yi - yFE, 2); });
-    const df = points.length - 1;
-    const sumW2 = points.reduce((s, p) => s + Math.pow(1/p.vi, 2), 0);
-    const c = W - sumW2 / W;
-    const tau2 = Math.max(0, (Q - df) / c);
+    let Q = 0; points.forEach(p => { const w = 1 / p.vi; Q += w * Math.pow(p.yi - yFE, 2); });
+    const tau2 = _tau2PM(points, df);
     let W2 = 0, WY2 = 0;
-    points.forEach(p => { const w = 1/(p.vi + tau2); W2 += w; WY2 += w * p.yi; });
+    points.forEach(p => { const w = 1 / (p.vi + tau2); W2 += w; WY2 += w * p.yi; });
     const yRE = WY2 / W2;
-    const seRE = Math.sqrt(1/W2);
-    return {
-      md: yRE, se: seRE,
-      ci_low: yRE - 1.96 * seRE,
-      ci_high: yRE + 1.96 * seRE,
-      k: points.length, tau2,
-    };
+    const seMu = Math.sqrt(1 / W2);
+    let qStar = 0; points.forEach(p => { const w = 1 / (p.vi + tau2); qStar += w * Math.pow(p.yi - yRE, 2); });
+    qStar /= df;
+    const seH = seMu * Math.sqrt(Math.max(1, qStar));
+    const t = _tCrit(df);
+    const out = { md: yRE, se: seH, ci_low: yRE - t * seH, ci_high: yRE + t * seH, k, tau2 };
+    if (k >= 3) { const seP = Math.sqrt(tau2 + seMu * seMu); out.pi_low = yRE - t * seP; out.pi_high = yRE + t * seP; }
+    return out;
   }
 
   function pickReference(cfg, treatments) {
@@ -174,7 +193,7 @@
         }
       });
       if (points.length === 0) return;
-      const pool = poolDLRE(points);
+      const pool = poolRE(points);
       if (!pool) return;
       rows.push({ treatment: T, pool });
     });

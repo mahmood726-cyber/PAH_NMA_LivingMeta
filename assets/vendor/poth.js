@@ -8,22 +8,33 @@
  * INFORMATIVE. With wide CrIs and overlapping rankings, SUCRA can put two
  * treatments at "rank 1 vs rank 2" with negligible probabilistic
  * separation. POTH ∈ [0, 1] summarizes that separation in one number:
- *   POTH = 1     → perfectly precise hierarchy (all rankings near 0 or 1)
- *   POTH = 0     → fully indeterminate (every treatment uniformly ranked)
+ *   POTH = 1     → perfectly precise hierarchy (SUCRAs maximally spread)
+ *   POTH = 0     → fully indeterminate (all SUCRA = 0.5)
  *   POTH < 0.5   → hierarchy is non-informative; do not write
  *                  "X ranks best" in conclusions.
  *
- * Definition: POTH = 1 - (mean_t  H(p_t)) / log(K)
- *   where p_t is the rank-probability vector for treatment t (vector of
- *   length K), H(p_t) = -Σ p_{t,r} log(p_{t,r}) is its Shannon entropy,
- *   and log(K) is the maximum entropy (uniform).
+ * HEADLINE metric — the CANONICAL Wigle definition (CRAN `poth`-verified, the
+ * closed-form S²/S²max variance ratio computed from the SUCRA values):
+ *   S2(n)    = (1/n) Σ_i (SUCRA_i − 0.5)²        (SUCRAs centred at 0.5)
+ *   S2max(n) = (n+1) / (12 (n−1))                (max, SUCRAs evenly spread)
+ *   POTH(n)  = S2(n) / S2max(n)                   0 ≤ POTH ≤ 1
+ * This is what advanced-stats's "POTH<0.5 ⇒ non-informative" rule refers to.
+ * Delegated to the verbatim-vendored `AlmPOTH` (alm-poth.js); an identical
+ * inline closed form is the fallback if AlmPOTH isn't loaded — the formula is
+ * a mathematical identity, so the two paths cannot disagree.
+ *
+ * SECONDARY diagnostic — rank-entropy precision (NOT Wigle's POTH; a related
+ * but distinct valid metric): 1 − (mean_t H(p_t)) / log(K), where H(p_t) is the
+ * Shannon entropy of treatment t's rank-probability vector. Reported alongside
+ * the headline as a per-treatment "how spread is each treatment's rank" view.
  *
  * Inputs:
  *   rankogram: array of {treatment, rankProbs: [p_rank1, p_rank2, ...]}
  *     where rankProbs[i] = P(treatment ranks i+1).
  *
  * Public API (window.POTH):
- *   compute(rankogram) → {poth, perTreatmentEntropy, verdict, color}
+ *   compute(rankogram) → {poth (canonical), sucra, s2, s2max, verdict, color,
+ *                         rankEntropyPrecision, perTreatmentEntropy, ...}
  *   render(container, result, opts)
  *
  * If a SUCRA-only output is available (no full rankogram), we estimate
@@ -42,6 +53,37 @@
     return H;
   }
 
+  // SUCRA_i from a treatment's rank-probability vector (Salanti cumulative
+  // form): SUCRA = (1/(n-1)) Σ_{r<n-1} (cumulative prob of rank ≤ r). Matches
+  // the (J-meanRank)/(J-1) form used elsewhere in the kit (algebraic identity).
+  function sucraFromRankProbVec(p) {
+    const n = p.length;
+    if (n < 2) return 0;
+    let cum = 0, acc = 0;
+    for (let r = 0; r < n - 1; r++) { cum += p[r]; acc += cum; }
+    return acc / (n - 1);
+  }
+
+  // Canonical Wigle POTH closed form from SUCRA values in [0,1]. Delegates to
+  // the verbatim-vendored AlmPOTH (alm-poth.js, CRAN poth-verified) when loaded;
+  // the inline path is the identical S²/S²max identity as a load-order-proof
+  // fallback. Returns {poth, s2, s2max, meanSucra} or null for n<2.
+  function canonicalPOTH(sucras) {
+    if (global.AlmPOTH && typeof global.AlmPOTH.poth === 'function') {
+      return global.AlmPOTH.poth(sucras);
+    }
+    const s = (sucras || []).filter(v => typeof v === 'number' && isFinite(v));
+    const n = s.length;
+    if (n < 2) return null;
+    let sumSq = 0, sum = 0;
+    for (let i = 0; i < n; i++) { sumSq += (s[i] - 0.5) * (s[i] - 0.5); sum += s[i]; }
+    const s2 = sumSq / n;
+    const s2max = (n + 1) / (12 * (n - 1));
+    let val = s2 / s2max;
+    if (val < 0) val = 0; if (val > 1) val = 1;
+    return { poth: val, n, s2, s2max, meanSucra: sum / n };
+  }
+
   /**
    * Compute POTH from a rankogram.
    *
@@ -56,16 +98,30 @@
     const K = valid.length;
     if (K < 2) return { error: 'POTH requires at least 2 treatments' };
 
-    const maxH = Math.log(K);
-    const perTreatmentEntropy = valid.map(t => {
-      // Normalize rankProbs to sum=1 (in case they're percentages or stale)
+    // Per-treatment normalised rank-prob vectors (guards percentages / stale rows).
+    const normProbs = valid.map(t => {
       const s = t.rankProbs.reduce((a, b) => a + b, 0);
-      const p = s > 0 ? t.rankProbs.map(x => x / s) : t.rankProbs;
-      const H = shannonEntropy(p);
-      return { treatment: t.treatment, entropy: H, normalizedEntropy: maxH > 0 ? H / maxH : 0 };
+      return s > 0 ? t.rankProbs.map(x => x / s) : t.rankProbs;
+    });
+
+    // HEADLINE: canonical Wigle POTH = S²/S²max from the SUCRA values.
+    const sucras = normProbs.map(sucraFromRankProbVec);
+    const canon = canonicalPOTH(sucras) || { poth: 0, s2: 0, s2max: 0, meanSucra: 0.5 };
+    const poth = canon.poth;
+
+    // SECONDARY: rank-entropy precision (distinct metric, per-treatment view).
+    const maxH = Math.log(K);
+    const perTreatmentEntropy = valid.map((t, i) => {
+      const H = shannonEntropy(normProbs[i]);
+      return {
+        treatment: t.treatment,
+        sucra: sucras[i],
+        entropy: H,
+        normalizedEntropy: maxH > 0 ? H / maxH : 0
+      };
     });
     const meanH = perTreatmentEntropy.reduce((s, t) => s + t.entropy, 0) / K;
-    const poth = maxH > 0 ? 1 - meanH / maxH : 0;
+    const rankEntropyPrecision = maxH > 0 ? 1 - meanH / maxH : 0;
 
     let verdict, color;
     if (poth >= 0.75) { verdict = 'Highly informative hierarchy'; color = '#10b981'; }
@@ -73,7 +129,13 @@
     else if (poth >= 0.25) { verdict = 'Low precision — interpret rankings cautiously'; color = '#f59e0b'; }
     else { verdict = 'Hierarchy non-informative — do NOT claim any treatment ranks best'; color = '#ef4444'; }
 
-    return { poth, perTreatmentEntropy, verdict, color, K, meanEntropy: meanH, maxEntropy: maxH };
+    return {
+      poth, verdict, color, K,
+      sucra: sucras,
+      s2: canon.s2, s2max: canon.s2max, meanSucra: canon.meanSucra,
+      rankEntropyPrecision, perTreatmentEntropy,
+      meanEntropy: meanH, maxEntropy: maxH
+    };
   }
 
   /**
@@ -119,13 +181,19 @@
     html += '</div>';
     html += '<div style="flex:1;font-size:12px;color:#cbd5e1;">';
     html += '<strong style="color:' + result.color + ';">' + result.verdict + '</strong><br>';
-    html += '<span style="font-size:11px;color:#94a3b8;">K=' + result.K + ' treatments · mean H=' + result.meanEntropy.toFixed(3) + ' · max H=' + result.maxEntropy.toFixed(3) + '</span>';
+    html += '<span style="font-size:11px;color:#94a3b8;">K=' + result.K + ' treatments · canonical S²/S²max = '
+         + (result.s2 != null ? result.s2.toFixed(4) : '—') + ' / ' + (result.s2max != null ? result.s2max.toFixed(4) : '—');
+    if (typeof result.rankEntropyPrecision === 'number') {
+      html += ' · rank-entropy precision = ' + result.rankEntropyPrecision.toFixed(3) + ' (secondary)';
+    }
+    html += '</span>';
     if (fromSucra) {
       html += '<br><span style="font-size:10px;color:#fbbf24;">⚠ Estimated from SUCRA (Gaussian approximation); MCMC rankograms preferred.</span>';
     }
     html += '</div></div>';
 
-    // Per-treatment entropy bars
+    // Secondary diagnostic — per-treatment rank entropy (NOT the Wigle POTH).
+    html += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin:2px 0 4px;">Secondary: per-treatment rank entropy</div>';
     html += '<table style="width:100%;border-collapse:collapse;font-size:11px;color:#cbd5e1;">';
     html += '<thead><tr style="border-bottom:1px solid #334155;">';
     html += '<th style="text-align:left;padding:4px 8px;color:#94a3b8;font-weight:600;">Treatment</th>';
@@ -153,5 +221,7 @@
     container.innerHTML = html;
   }
 
-  global.POTH = { compute, fromSUCRA, render };
+  const api = { compute, fromSUCRA, render, canonicalPOTH, sucraFromRankProbVec };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  global.POTH = api;
 })(typeof window !== 'undefined' ? window : globalThis);

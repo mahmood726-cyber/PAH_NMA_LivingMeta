@@ -201,7 +201,7 @@
     const stats = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px;">';
     function cell(label, value, sub) {
       return '<div style="background:#0b1220;border:1px solid #1e293b;border-radius:6px;padding:6px 8px;">'
-           + '<div style="font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">' + label + '</div>'
+           + '<div style="font-size:9.5px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;">' + label + '</div>'
            + '<div style="font-size:13px;color:#f1f5f9;font-weight:700;font-family:JetBrains Mono,monospace;margin-top:2px;">' + value + '</div>'
            + (sub ? '<div style="font-size:10px;color:#94a3b8;margin-top:1px;">' + sub + '</div>' : '')
            + '</div>';
@@ -215,7 +215,7 @@
       + cell('Accrued', accrued_label, String(trials.length) + ' trial' + (trials.length>1?'s':'') + ' · raw ' + Math.round(accrued_pct_raw) + '%')
       + '</div>';
 
-    const note = '<div style="font-size:10.5px;color:#64748b;margin-top:8px;line-height:1.5;">'
+    const note = '<div style="font-size:10.5px;color:#94a3b8;margin-top:8px;line-height:1.5;">'
                + 'O\'Brien–Fleming alpha-spending; α=0.05, β=0.20. Boundary z = z<sub>α/2</sub>/√t. '
                + 'Diversity-adjusted RIS: N<sub>naïve</sub>/(1−D²) where D² ≈ τ²/(τ²+s̄²). '
                + 'Conclusive ⇔ |z<sub>cum</sub>| ≥ boundary <em>and</em> t > 0.05. '
