@@ -26371,7 +26371,7 @@ const ContinuousMDEngine = {
                     const deviations = plotData.map(d => ({ dev: d.logOR - center, logOR: d.logOR, vi: d.vi }));
 
 
-                    deviations.sort((a, b) => a.dev - b.dev);
+                    deviations.sort((a, b) => Math.abs(a.dev) - Math.abs(b.dev));
 
 
                     deviations.forEach((d, i) => d.rank = i + 1);
@@ -26380,7 +26380,7 @@ const ContinuousMDEngine = {
                     const T = deviations.filter(d => d.dev > 0).reduce((a, d) => a + d.rank, 0);
 
 
-                    k0 = Math.max(0, Math.round((4 * T - k * (k + 1)) / (2 * k + 1)));
+                    k0 = Math.max(0, Math.round((4 * T - k * (k + 1)) / (2 * k - 1)));
 
 
                     if (k0 === prevK0) break;
